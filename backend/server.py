@@ -1,3 +1,5 @@
+
+import uvicorn
 from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect, Cookie, Response, Query
 from fastapi.responses import StreamingResponse, FileResponse
 from reportlab.lib.pagesizes import letter, A4
@@ -3022,3 +3024,8 @@ async def clear_videos():
     except Exception as e:
         logger.exception('Failed to clear videos: %s', e)
         raise HTTPException(status_code=500, detail=str(e))
+
+if _name_ == "_main_":
+
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
