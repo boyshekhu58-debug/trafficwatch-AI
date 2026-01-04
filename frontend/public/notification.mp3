@@ -1,0 +1,1 @@
+This is a placeholder file named notification.mp3. Replace this file with a short notification audio (MP3) you prefer. The app will prefer a backend-served audio at /notification.wav, then this file, then a built-in fallback.

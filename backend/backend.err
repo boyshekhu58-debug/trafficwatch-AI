@@ -1,0 +1,11 @@
+2025-12-30 16:23:09,168 - server - INFO - Loaded YOLOv8 model with classes: {0: 'bike', 1: 'car', 2: 'phone', 3: 'helmet', 4: 'no_helmet', 5: 'number_plate', 6: 'triple_ride', 7: 'undefined'}
+INFO:     Started server process [19056]
+INFO:     Waiting for application startup.
+2025-12-30 16:23:09,303 - server - INFO - Created indexes for date-based queries
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+forrtl: error (200): program aborting due to window-CLOSE event
+Image              PC                Routine            Line        Source             
+KERNELBASE.dll     00007FFF35B9B99D  Unknown               Unknown  Unknown
+KERNEL32.DLL       00007FFF36CEE8D7  Unknown               Unknown  Unknown
+ntdll.dll          00007FFF3824C53C  Unknown               Unknown  Unknown

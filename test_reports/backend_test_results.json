@@ -1,0 +1,89 @@
+{
+  "summary": {
+    "total_tests": 13,
+    "passed_tests": 13,
+    "failed_tests": 0,
+    "success_rate": 100.0
+  },
+  "detailed_results": [
+    {
+      "test_name": "Auth Me - Unauthenticated",
+      "success": true,
+      "details": "Status: 401, Expected: 401",
+      "timestamp": "2025-11-28T17:30:55.580458"
+    },
+    {
+      "test_name": "Auth Me - Authenticated",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2025-11-28T17:30:55.616063"
+    },
+    {
+      "test_name": "Auth Me - User Data Validation",
+      "success": true,
+      "details": "User data matches",
+      "timestamp": "2025-11-28T17:30:55.616507"
+    },
+    {
+      "test_name": "Get Videos - Empty List",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2025-11-28T17:30:55.650348"
+    },
+    {
+      "test_name": "Video Upload - No File",
+      "success": true,
+      "details": "Status: 422, Expected: 422",
+      "timestamp": "2025-11-28T17:30:55.682591"
+    },
+    {
+      "test_name": "Get Violations - Empty List",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2025-11-28T17:30:55.721769"
+    },
+    {
+      "test_name": "Get Calibration - None Exists",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2025-11-28T17:30:55.757001"
+    },
+    {
+      "test_name": "Create Calibration",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2025-11-28T17:30:55.803684"
+    },
+    {
+      "test_name": "Get Calibration - After Creation",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2025-11-28T17:30:55.836771"
+    },
+    {
+      "test_name": "Get Stats",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2025-11-28T17:30:55.870006"
+    },
+    {
+      "test_name": "Stats Response Structure",
+      "success": true,
+      "details": "Has keys: ['total_videos', 'total_violations', 'violations_by_type']",
+      "timestamp": "2025-11-28T17:30:55.870633"
+    },
+    {
+      "test_name": "Logout",
+      "success": true,
+      "details": "Status: 200, Expected: 200",
+      "timestamp": "2025-11-28T17:30:55.902339"
+    },
+    {
+      "test_name": "Auth Me - After Logout",
+      "success": true,
+      "details": "Status: 401, Expected: 401",
+      "timestamp": "2025-11-28T17:30:55.932204"
+    }
+  ],
+  "timestamp": "2025-11-28T17:30:55.933030"
+}
