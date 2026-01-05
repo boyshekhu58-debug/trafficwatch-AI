@@ -1,0 +1,7 @@
+2026-01-05 19:57:34,068 - server - INFO - Model inference image size set to 512px
+2026-01-05 19:57:34,073 - server - INFO - Loaded YOLOv8 model with classes: {0: 'bike', 1: 'car', 2: 'phone', 3: 'helmet', 4: 'no_helmet', 5: 'number_plate', 6: 'triple_ride', 7: 'undefined'}
+INFO:     Started server process [10456]
+INFO:     Waiting for application startup.
+2026-01-05 19:57:37,948 - server - INFO - Created indexes for date-based queries
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)

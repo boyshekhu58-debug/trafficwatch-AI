@@ -432,3 +432,20 @@ This project was originally developed as TrafficWatch-AI. Branding and attributi
 ## Support
 
 For issues and questions, please open an issue or contact the development team.
+
+**Render Deployment**
+
+- **Service type:** Web Service (Python)
+- **Build command:** `pip install -r backend/requirements.txt`
+- **Start command:** `uvicorn backend.server:app --host 0.0.0.0 --port $PORT`
+- **Environment variables to set on Render:**
+  - `MONGO_URL` (e.g. your MongoDB connection string)
+  - `DB_NAME` (e.g. `trafficwatch`)
+  - `CORS_ORIGINS` (comma-separated origins)
+  - `CHALLAN_HEADER_IMAGE` (optional path to header image)
+
+- Notes:
+  - Render provides the `PORT` environment variable — the backend reads `PORT` and binds to `0.0.0.0`.
+  - Local filesystem on Render is ephemeral; store uploads and the `models/best.pt` model on a Persistent Disk or external object storage (S3, Backblaze) to avoid data loss across deploys.
+  - Ensure your Render service has sufficient CPU/memory (or GPU if you require accelerated inference) and include heavy deps (YOLO/Ultralytics, OpenCV) in `backend/requirements.txt`.
+  - Set a health check and choose an appropriate instance type to avoid OOMs or slow starts.

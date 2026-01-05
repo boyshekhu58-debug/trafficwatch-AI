@@ -392,6 +392,12 @@ PHOTOS_DIR.mkdir(exist_ok=True)
 PROCESSED_PHOTOS_DIR.mkdir(exist_ok=True)
 PROCESSED_CHALLANS_DIR.mkdir(exist_ok=True)
 
+# Optional directories for video uploads/processing
+VIDEOS_DIR = ROOT_DIR / "videos"
+PROCESSED_VIDEOS_DIR = ROOT_DIR / "processed_videos"
+VIDEOS_DIR.mkdir(exist_ok=True)
+PROCESSED_VIDEOS_DIR.mkdir(exist_ok=True)
+
 # Extract clean class names from model (handle metadata in names)
 MODEL_CLASS_NAMES = model.names
 CLASS_NAMES: Dict[int, str] = {}
@@ -798,6 +804,9 @@ async def process_video_background(video_id: str, user_id: str):
                 'riders': []
             }
             
+            # Keep a flat list of all detected objects for proximity checks
+            detected_objects = []
+
             if results[0].boxes is not None:
                 boxes = results[0].boxes.xyxy.cpu().numpy()
                 classes = results[0].boxes.cls.cpu().numpy().astype(int)
@@ -809,7 +818,15 @@ async def process_video_background(video_id: str, user_id: str):
                     class_name = CLASS_NAMES.get(int(cls), 'unknown').lower()
                     center_x = (x1 + x2) / 2
                     center_y = (y1 + y2) / 2
-                    
+
+                    # Record object for later cross-checks
+                    detected_objects.append({
+                        'class': class_name,
+                        'bbox': [float(x1), float(y1), float(x2), float(y2)],
+                        'confidence': float(conf),
+                        'center': [center_x, center_y]
+                    })
+
                     # Categorize detections
                     if 'helmet' in class_name and 'no' not in class_name:
                         frame_detections['helmets'].append({
@@ -2913,6 +2930,12 @@ app.add_middleware(
 )
 
 
+# Simple health check for readiness probes
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
+
 @api_router.get('/calendar')
 async def get_calendar(start: Optional[str] = None, end: Optional[str] = None, session_token: Optional[str] = Cookie(None)):
     """Return daily counts for videos/photos/violations/challans between start and end dates (YYYY-MM-DD). Limits range to 90 days."""
@@ -3028,4 +3051,4 @@ async def clear_videos():
 if __name__ == "__main__":
 
     port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
+    uvicorn.run(app, host="0.0.0.0", port=port, reload=False)

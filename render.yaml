@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: trafficwatch-backend
+    env: python
+    plan: starter
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn backend.server:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: MONGO_URL
+        value: "<YOUR_MONGODB_CONNECTION_STRING>"
+        sync: false
+      - key: DB_NAME
+        value: "trafficwatch"
+        sync: false
+      - key: CORS_ORIGINS
+        value: "http://localhost:3000"
+        sync: false
+# Notes:
+# - Remove values from this file and set sensitive vars via Render dashboard Secrets.
+# - Render sets the $PORT env var automatically; backend reads it and binds to 0.0.0.0.
+# - Consider attaching a Persistent Disk or using S3 for model/uploads to avoid ephemeral storage issues.
