@@ -88,9 +88,9 @@ const Sidebar = () => {
         </div>
       </div>
 
-      {/* Mobile Bottom Nav: include core menu items + bottom items in a horizontally scrollable bar */}
-      <div className="sm:hidden fixed bottom-4 left-1/2 -translate-x-1/2 bg-slate-800/95 rounded-full p-2 z-50 flex gap-2 border border-slate-700 overflow-x-auto max-w-[95%]">
-        {[...menuItems, ...bottomItems].map((item) => {
+      {/* Mobile Bottom Nav */}
+      <div className="sm:hidden fixed bottom-4 left-1/2 -translate-x-1/2 bg-slate-800/95 rounded-full p-2 z-50 flex gap-2 border border-slate-700">
+        {bottomItems.map((item) => {
           const Icon = item.icon;
           const isActive = location.pathname === item.path;
           return (
@@ -98,11 +98,10 @@ const Sidebar = () => {
               key={item.path}
               to={item.path}
               className={cn(
-                "w-12 h-12 flex items-center justify-center rounded-lg transition-colors flex-shrink-0",
+                "w-12 h-12 flex items-center justify-center rounded-lg transition-colors",
                 isActive ? "bg-blue-600 text-white" : "text-slate-400 hover:bg-slate-700 hover:text-white"
               )}
               title={item.label}
-              aria-label={item.label}
             >
               <Icon className="w-5 h-5" />
             </Link>
