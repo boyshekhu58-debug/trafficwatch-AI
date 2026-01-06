@@ -798,6 +798,8 @@ async def process_video_background(video_id: str, user_id: str, fast: bool = Fal
         frame_idx = 0
         violations_count = 0
         tracker_data = defaultdict(lambda: {'positions': deque(maxlen=30), 'class': None, 'violations': set()})
+        # Buffer for frames that were skipped for detection but should still be written in order
+        frames_to_write = []
         
         # Get calibration (default if none exists). Use the most recently saved calibration for the user.
         calibration = await db.calibration_zones.find_one({"user_id": user_id}, {"_id": 0}, sort=[("created_at", -1)])
@@ -855,10 +857,7 @@ async def process_video_background(video_id: str, user_id: str, fast: bool = Fal
                         logger.exception('Failed to update processing_progress')
 
             frame_idx += 1
-            # loop continues                frames_to_write.append((frame_idx, frame.copy()))
-                frame_idx += 1
-                continue
-            
+
             # Run YOLOv8 detection with tracking (only on sampled frames)
             results = model.track(frame, persist=True, verbose=False)
             
