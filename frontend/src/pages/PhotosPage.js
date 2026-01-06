@@ -154,45 +154,41 @@ const PhotosPage = () => {
     });
   }, [photos, startBackgroundProcessing]);
 
-  const handlePhotoUpload = async (file, onProgress) => {
+  const handlePhotoUpload = async (file) => {
     setUploading(true);
+    
     try {
       const formData = new FormData();
       formData.append('file', file);
-
-      // Upload photo with progress support
+      
+      // Upload photo
       const response = await axios.post(`${API}/photos/upload`, formData, {
         withCredentials: true,
         headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 0, // Disable timeout for large mobile uploads (rely on browser/server timeouts)
-        onUploadProgress: (progressEvent) => {
-          if (progressEvent.lengthComputable) {
-            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-            onProgress?.(percentCompleted);
-          }
-        }
+        timeout: 30000 // Reduced timeout for faster feedback
       });
-
+      
       const photoId = response.data.id;
       toast.success('Photo uploaded! Processing in background...', { duration: 2000 });
-
+      
       // Release UI immediately - processing happens in background
       setUploading(false);
       refreshData(); // Show the new photo immediately
-
+      
       // Start processing in background (fire and forget)
       axios.post(`${API}/photos/${photoId}/process`, null, {
         withCredentials: true,
         timeout: 10000 // Increased timeout to allow processing to start properly
       }).catch(err => {
+        // Processing might still start even if request times out
         if (err.code !== 'ECONNABORTED') {
           console.error('Processing trigger error:', err.message);
         }
       });
-
+      
       // Start background polling immediately
       startBackgroundProcessing(photoId);
-
+      
     } catch (error) {
       setUploading(false);
       console.error('Upload error:', error);

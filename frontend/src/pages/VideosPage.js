@@ -43,33 +43,26 @@ const VideosPage = () => {
     });
   }, [videos, selectedDate]);
 
-  const handleVideoUpload = async (file, onProgress) => {
+  const handleVideoUpload = async (file) => {
     setLoading(true);
     try {
       const formData = new FormData();
       formData.append('file', file);
-
+      
       const response = await axios.post(`${API}/videos/upload`, formData, {
         withCredentials: true,
-        headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 0,
-        onUploadProgress: (progressEvent) => {
-          if (progressEvent.lengthComputable) {
-            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-            onProgress?.(percentCompleted);
-          }
-        }
+        headers: { 'Content-Type': 'multipart/form-data' }
       });
-
+      
       toast.success('Video uploaded successfully!');
-
+      
       await axios.post(`${API}/videos/${response.data.id}/process`, null, {
         withCredentials: true
       });
-
+      
       toast.info('Processing started...');
       refreshData(); // Refresh all data
-
+      
       const videoId = response.data.id;
       videoPollingIntervals.current[videoId] = setInterval(async () => {
         try {
@@ -77,7 +70,7 @@ const VideosPage = () => {
           if (videoRes.data.status === 'completed' || videoRes.data.status === 'failed') {
             clearInterval(videoPollingIntervals.current[videoId]);
             delete videoPollingIntervals.current[videoId];
-
+            
             if (videoRes.data.status === 'completed') {
               const violationCount = videoRes.data.total_violations || 0;
               toast.success(`Video processing complete! Found ${violationCount} violation(s).`);
@@ -94,7 +87,7 @@ const VideosPage = () => {
         }
       }, 2000);
     } catch (error) {
-      toast.error('Upload failed: ' + (error.message || error.toString()));
+      toast.error('Upload failed: ' + error.message);
     } finally {
       setLoading(false);
     }

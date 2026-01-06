@@ -149,34 +149,27 @@ const Dashboard = ({ user, setUser }) => {
     }
   };
 
-  const handleVideoUpload = async (file, onProgress) => {
+  const handleVideoUpload = async (file) => {
     setLoading(true);
     try {
       const formData = new FormData();
       formData.append('file', file);
-
+      
       const response = await axios.post(`${API}/videos/upload`, formData, {
         withCredentials: true,
-        headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 0,
-        onUploadProgress: (progressEvent) => {
-          if (progressEvent.lengthComputable) {
-            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-            onProgress?.(percentCompleted);
-          }
-        }
+        headers: { 'Content-Type': 'multipart/form-data' }
       });
-
+      
       toast.success('Video uploaded successfully!');
-
+      
       // Start processing
       await axios.post(`${API}/videos/${response.data.id}/process`, null, {
         withCredentials: true
       });
-
+      
       toast.info('Processing started...');
       loadData(true); // Force reload
-
+      
       // Poll for completion - optimized interval (3 seconds for videos since they take longer)
       const videoId = response.data.id;
       videoPollingIntervals.current[videoId] = setInterval(async () => {
@@ -188,12 +181,12 @@ const Dashboard = ({ user, setUser }) => {
           if (videoRes.data.status === 'completed' || videoRes.data.status === 'failed') {
             clearInterval(videoPollingIntervals.current[videoId]);
             delete videoPollingIntervals.current[videoId];
-
+            
             if (videoRes.data.status === 'completed') {
               const violationCount = videoRes.data.total_violations || 0;
               toast.success(`Video processing complete! Found ${violationCount} violation(s).`);
               playNotificationSound('success');
-
+              
               // If violations found, show additional notification
               if (violationCount > 0) {
                 setTimeout(() => {
@@ -212,40 +205,33 @@ const Dashboard = ({ user, setUser }) => {
         }
       }, 3000); // Poll every 3 seconds for videos (reduced server load, faster than before)
     } catch (error) {
-      toast.error('Upload failed: ' + (error.message || error.toString()));
+      toast.error('Upload failed: ' + error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handlePhotoUpload = async (file, onProgress) => {
+  const handlePhotoUpload = async (file) => {
     setPhotoLoading(true);
     try {
       const formData = new FormData();
       formData.append('file', file);
-
+      
       const response = await axios.post(`${API}/photos/upload`, formData, {
         withCredentials: true,
-        headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 0,
-        onUploadProgress: (progressEvent) => {
-          if (progressEvent.lengthComputable) {
-            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-            onProgress?.(percentCompleted);
-          }
-        }
+        headers: { 'Content-Type': 'multipart/form-data' }
       });
-
+      
       toast.success('Photo uploaded successfully!');
-
+      
       // Start processing
       await axios.post(`${API}/photos/${response.data.id}/process`, null, {
         withCredentials: true
       });
-
+      
       toast.info('Processing photo...');
       loadData(true); // Force reload
-
+      
       // Poll for completion - optimized interval (1.5 seconds for photos)
       const photoId = response.data.id;
       photoPollingIntervals.current[photoId] = setInterval(async () => {
