@@ -30,6 +30,8 @@ import requests
 import shutil
 import re
 import functools
+from PIL import Image, ImageOps
+import io
 
 # Optional OCR support for number plate extraction
 try:
@@ -679,22 +681,49 @@ async def upload_video(file: UploadFile = File(...), session_token: Optional[str
     user = await get_current_user(session_token)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    
-    # Save uploaded file
+
+    # Validate extensions and sizes for mobile uploads
+    allowed_extensions = {'.mp4', '.mov', '.avi', '.mkv'}
+    file_extension = Path(file.filename).suffix.lower()
+    MAX_VIDEO_SIZE = 500 * 1024 * 1024  # 500MB
+
     video_id = str(uuid.uuid4())
-    file_extension = Path(file.filename).suffix
     file_path = UPLOADS_DIR / f"{video_id}{file_extension}"
-    
+
+    # Save uploaded file
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-    
+
+    # Check saved file size and enforce limit
+    try:
+        size = file_path.stat().st_size
+        if size > MAX_VIDEO_SIZE:
+            file_path.unlink(missing_ok=True)
+            raise HTTPException(status_code=413, detail="Video too large (max 500MB). Please compress or trim the video.")
+    except Exception:
+        # If stat fails, allow processing to continue but log
+        logger.exception('Failed to stat uploaded video file')
+
     # Get video properties
     cap = cv2.VideoCapture(str(file_path))
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps = cap.get(cv2.CAP_PROP_FPS) or 0
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
     duration = frame_count / fps if fps > 0 else 0
-    cap.release()
-    
+
+    # Extract first frame as thumbnail (if available)
+    try:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        ret, frame = cap.read()
+        if ret and frame is not None:
+            thumb_path = PROCESSED_PHOTOS_DIR / f"{video_id}_thumb.jpg"
+            # Resize thumbnail to reasonable size
+            thumb = cv2.resize(frame, (min(640, frame.shape[1]), int(frame.shape[0] * (min(640, frame.shape[1]) / frame.shape[1])))) if frame.shape[1] > 640 else frame
+            cv2.imwrite(str(thumb_path), thumb)
+    except Exception:
+        logger.exception('Failed to write video thumbnail')
+    finally:
+        cap.release()
+
     # Create video record
     video = Video(
         id=video_id,
@@ -705,11 +734,11 @@ async def upload_video(file: UploadFile = File(...), session_token: Optional[str
         duration=duration,
         fps=fps
     )
-    
+
     video_dict = video.model_dump()
     video_dict['created_at'] = video_dict['created_at'].isoformat()
     await db.videos.insert_one(video_dict)
-    
+
     return video
 
 @api_router.post("/videos/{video_id}/process")
@@ -1536,43 +1565,60 @@ async def upload_photo(file: UploadFile = File(...), session_token: Optional[str
     user = await get_current_user(session_token)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    
-    # Validate file type
-    allowed_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.webp'}
-    file_extension = Path(file.filename).suffix.lower()
-    if file_extension not in allowed_extensions:
-        raise HTTPException(status_code=400, detail="Invalid file type. Allowed: JPG, PNG, BMP, WEBP")
-    
-    # Save uploaded file
+
+    # Hard limits for mobile compatibility
+    MAX_SIZE_BYTES = 50 * 1024 * 1024  # 50MB
+
+    content = await file.read()
+    if len(content) > MAX_SIZE_BYTES:
+        raise HTTPException(status_code=413, detail="Image too large (max 50MB). Please reduce resolution or compress on device.")
+
+    # Try to open with Pillow first to handle orientation and broad formats (HEIC/HEIF fallback may still fail if not supported by Pillow build)
+    try:
+        pil_img = Image.open(io.BytesIO(content))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Unsupported or invalid image format. Try JPG/PNG or re-save the photo as JPEG.")
+
+    # Normalize orientation
+    try:
+        pil_img = ImageOps.exif_transpose(pil_img)
+    except Exception:
+        pass
+
+    # Convert to RGB and save as JPEG for broad compatibility
+    rgb = pil_img.convert('RGB')
+
     photo_id = str(uuid.uuid4())
-    file_path = PHOTOS_DIR / f"{photo_id}{file_extension}"
-    
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-    
-    # Get image properties
-    img = cv2.imread(str(file_path))
-    if img is None:
-        raise HTTPException(status_code=400, detail="Invalid image file")
-    
-    height, width = img.shape[:2]
-    
+    saved_path = PHOTOS_DIR / f"{photo_id}.jpg"
+    rgb.save(saved_path, format='JPEG', quality=85)
+
+    # Generate a thumbnail for quick previews / mobile
+    try:
+        thumb = rgb.copy()
+        thumb.thumbnail((800, 800))
+        thumb_path = PROCESSED_PHOTOS_DIR / f"{photo_id}_thumb.jpg"
+        thumb.save(thumb_path, format='JPEG', quality=75)
+    except Exception:
+        thumb_path = None
+
+    width, height = rgb.size
+
     # Create photo record
     photo = Photo(
         id=photo_id,
         user_id=user.id,
         filename=file.filename,
-        original_path=str(file_path),
+        original_path=str(saved_path),
         status="uploaded",
         width=width,
         height=height,
         uploaded_via="upload"
     )
-    
+
     photo_dict = photo.model_dump()
     photo_dict['created_at'] = photo_dict['created_at'].isoformat()
     await db.photos.insert_one(photo_dict)
-    
+
     return photo
 
 @api_router.post("/photos/{photo_id}/process")

@@ -1,15 +1,34 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Upload, Loader2 } from 'lucide-react';
 
 const VideoUpload = ({ onUpload, loading }) => {
   const fileInputRef = useRef(null);
+  const [progress, setProgress] = useState(0);
 
-  const handleFileSelect = (e) => {
+  const handleFileSelect = async (e) => {
     const file = e.target.files[0];
-    if (file) {
-      onUpload(file);
+    if (!file) return;
+
+    // Basic validation: allow common video formats and limit size
+    const allowedExts = ['.mp4', '.mov', '.avi', '.mkv'];
+    const name = file.name || '';
+    const ext = name.slice(name.lastIndexOf('.')).toLowerCase();
+    const MAX_SIZE = 500 * 1024 * 1024; // 500MB
+
+    if (!allowedExts.includes(ext) && !file.type.startsWith('video/')) {
+      alert('Unsupported video format. Supported: MP4, MOV, AVI, MKV');
+      return;
     }
+
+    if (file.size > MAX_SIZE) {
+      alert('Video too large. Please trim or compress and try again (max 500MB).');
+      return;
+    }
+
+    const progressCb = (p) => setProgress(p);
+    await onUpload(file, progressCb);
+    setProgress(0);
   };
 
   return (
@@ -28,6 +47,7 @@ const VideoUpload = ({ onUpload, loading }) => {
             <div className="flex flex-col items-center gap-3">
               <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
               <p className="text-slate-500 dark:text-slate-300">Uploading...</p>
+              {progress > 0 && <p className="text-xs text-slate-400 mt-1">{progress}%</p>}
             </div>
           ) : (
             <div className="flex flex-col items-center gap-3">
@@ -37,7 +57,7 @@ const VideoUpload = ({ onUpload, loading }) => {
               <div>
                 <p className="text-slate-900 dark:text-white font-medium">Click to select video</p>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Supported formats: MP4, AVI, MOV
+                  Supported formats: MP4, AVI, MOV (max 500MB)
                 </p>
               </div>
             </div>
@@ -47,6 +67,7 @@ const VideoUpload = ({ onUpload, loading }) => {
           ref={fileInputRef}
           type="file"
           accept="video/*"
+          capture="environment"
           onChange={handleFileSelect}
           className="hidden"
           data-testid="video-file-input"
