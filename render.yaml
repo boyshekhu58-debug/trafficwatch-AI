@@ -3,11 +3,14 @@ services:
     name: trafficwatch-backend
     env: python
     plan: starter
-    buildCommand: pip install -r backend/requirements.txt
-    startCommand: python start_server.py
+    # Tell Render that the app root is the `backend` folder
+    rootDir: backend
+    # Run inside backend: install dependencies there
+    buildCommand: pip install -r requirements.txt
+    # Import server:app inside backend
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: MONGO_URL
-        value: "<YOUR_MONGODB_CONNECTION_STRING>"
         sync: false
       - key: DB_NAME
         value: "trafficwatch"
