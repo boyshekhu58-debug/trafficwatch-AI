@@ -2921,10 +2921,26 @@ async def create_indexes():
     except Exception:
         logger.exception('Failed to create indexes at startup')
 
+# CORS setup: read CORS_ORIGINS env var and normalize origins
+cors_raw = os.environ.get('CORS_ORIGINS', '*')
+if cors_raw.strip() == '*' or cors_raw.strip() == '':
+    allow_origins = ["*"]
+else:
+    allow_origins = []
+    for origin in [o.strip() for o in cors_raw.split(',') if o.strip()]:
+        if origin == '*':
+            allow_origins = ["*"]
+            break
+        # If user provided a bare hostname (e.g. trafficwatch-ai-uhyk.vercel.app),
+        # assume https and prefix it so FastAPI matches the Origin header exactly.
+        if not origin.startswith('http://') and not origin.startswith('https://'):
+            origin = 'https://' + origin
+        allow_origins.append(origin)
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=allow_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

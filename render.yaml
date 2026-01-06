@@ -16,7 +16,7 @@ services:
         value: "trafficwatch"
         sync: false
       - key: CORS_ORIGINS
-        value: "http://localhost:3000"
+        value: "http://localhost:3000,https://trafficwatch-ai-uhyk.vercel.app"
         sync: false
 # Notes:
 # - Remove values from this file and set sensitive vars via Render dashboard Secrets.
