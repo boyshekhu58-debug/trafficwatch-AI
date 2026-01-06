@@ -149,7 +149,7 @@ const Dashboard = ({ user, setUser }) => {
     }
   };
 
-  const handleVideoUpload = async (file, onProgress, options) => {
+  const handleVideoUpload = async (file, onProgress) => {
     setLoading(true);
     try {
       const formData = new FormData();
@@ -169,9 +169,8 @@ const Dashboard = ({ user, setUser }) => {
 
       toast.success('Video uploaded successfully!');
 
-      const fast = options?.fast ? 'true' : 'false';
-      // Start processing (optionally fast)
-      await axios.post(`${API}/videos/${response.data.id}/process?fast=${fast}`, null, {
+      // Start processing
+      await axios.post(`${API}/videos/${response.data.id}/process`, null, {
         withCredentials: true
       });
 
@@ -182,15 +181,10 @@ const Dashboard = ({ user, setUser }) => {
       const videoId = response.data.id;
       videoPollingIntervals.current[videoId] = setInterval(async () => {
         try {
-          const videoRes = await axios.get(`${API}/videos/${videoId}`, {
+          const videoRes = await axios.get(`${API}/videos/${videoId}`, { 
             withCredentials: true,
             timeout: 3000
           });
-
-          if (videoRes.data.processing_progress) {
-            toast.info(`Processing... ${videoRes.data.processing_progress}%`, { id: `processing-${videoId}`, duration: 1000 });
-          }
-
           if (videoRes.data.status === 'completed' || videoRes.data.status === 'failed') {
             clearInterval(videoPollingIntervals.current[videoId]);
             delete videoPollingIntervals.current[videoId];
