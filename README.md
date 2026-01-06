@@ -395,39 +395,6 @@ Once both servers are running:
 4. **Process Video**: Start processing the uploaded video to detect violations
 5. **View Results**: Review detected violations, download processed videos, and view statistics
 
----
-
-## Mobile & Camera Uploads (📱)
-
-TrafficWatch-AI supports camera capture and recording directly from modern mobile browsers. This section explains how to use mobile features and important platform caveats.
-
-### What’s supported
-- **Photo capture**: "Use Camera" opens the device camera (getUserMedia). You can capture a still image which will be auto-compressed, re-oriented and uploaded.
-- **Flip camera**: A **Flip** button toggles between rear (environment) and front (user) cameras on supported devices.
-- **Video recording**: Use **Record** / **Stop** to record a short clip in-browser (MediaRecorder). After stopping, the video is uploaded and processed.
-- **Choose File** fallback: If native recording isn’t available or permissions are denied, users can record using the native camera app and return the file via the picker.
-- **Quick processing**: An optional checkbox to request a faster backend pass (skips more detection frames) to speed up results at the cost of some accuracy.
-
-### Limits & behavior
-- **Image uploads**: client-side resize/compression is applied. Server enforces a max of **50 MB** per image. Large images are resized to a sensible maximum resolution before upload for faster mobile performance.
-- **Video uploads**: Server enforces a max of **500 MB** per video. Large videos may be slow to upload on mobile networks — consider trimming or compressing on-device if possible.
-- **Processing progress**: The frontend polls the backend for processing progress and displays a percent (field: `processing_progress` on a video record).
-- **Formats**: Common formats (JPEG, PNG, WEBP, MP4, MOV, AVI, MKV) are accepted. iPhone HEIC/HEIF may not be supported on older Pillow builds — see notes below.
-
-### Browser compatibility & caveats
-- Best experience: **Android Chrome/Firefox** (getUserMedia + MediaRecorder well supported).
-- **iOS Safari** limitations:
-  - MediaRecorder support may be limited or absent on some iOS versions. If recording in-browser is not available, use **Choose File** and let the native camera app record (typically produces MP4/MOV).
-  - HEIC/HEIF images may not decode server-side unless additional libraries are installed (`pillow-heif`).
-- Camera APIs require **HTTPS** (production is fine; local HTTP may block camera access).
-
-### Recommended improvements (optional)
-- Add server-side transcode for `webm` uploads to `mp4` to improve iOS compatibility (FFmpeg in backend). We can add this if you see many iOS uploads.
-- Support `pillow-heif` to decode HEIC images server-side for iPhone compatibility.
-- Implement resumable/chunked uploads (tus or custom) for very large videos on poor mobile networks.
-
----
-
 ## Configuration
 
 ### Calibration Setup
