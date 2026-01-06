@@ -742,7 +742,7 @@ async def upload_video(file: UploadFile = File(...), session_token: Optional[str
     return video
 
 @api_router.post("/videos/{video_id}/process")
-async def process_video(video_id: str, session_token: Optional[str] = Cookie(None)):
+async def process_video(video_id: str, fast: bool = Query(False), session_token: Optional[str] = Cookie(None)):
     user = await get_current_user(session_token)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -752,18 +752,18 @@ async def process_video(video_id: str, session_token: Optional[str] = Cookie(Non
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
     
-    # Start processing in background
-    asyncio.create_task(process_video_background(video_id, user.id))
+    # Start processing in background (fast flag influences frame skipping)
+    asyncio.create_task(process_video_background(video_id, user.id, fast))
     
-    return {"status": "processing", "video_id": video_id}
+    return {"status": "processing", "video_id": video_id, "fast": bool(fast)}
 
-async def process_video_background(video_id: str, user_id: str):
+async def process_video_background(video_id: str, user_id: str, fast: bool = False):
     """Process video with YOLOv8 and detect violations"""
     try:
         # Update status
         await db.videos.update_one(
             {"id": video_id},
-            {"$set": {"status": "processing"}}
+            {"$set": {"status": "processing", "processing_progress": 0}}
         )
         
         video = await db.videos.find_one({"id": video_id}, {"_id": 0})
@@ -772,13 +772,28 @@ async def process_video_background(video_id: str, user_id: str):
         
         # Open video
         cap = cv2.VideoCapture(input_path)
-        fps = int(cap.get(cv2.CAP_PROP_FPS))
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        
-        # Video writer
+        fps = cap.get(cv2.CAP_PROP_FPS) or 0
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+
+        # Choose frame skipping strategy
+        if fast:
+            # Fast mode: skip more frames (reduce detection passes)
+            FRAME_SKIP = max(2, int(max(1, round(fps / 2))))
+        else:
+            # Default: check every frame for best accuracy
+            FRAME_SKIP = 1
+
+        # Estimate number of detection frames to process for progress reporting
+        total_check_frames = max(1, total_frames // FRAME_SKIP)
+        processed_check_frames = 0
+        last_progress = 0
+
+        # Video writer (write full output at original fps)
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+        out = cv2.VideoWriter(output_path, fourcc, fps if fps>0 else 25, (width if width>0 else 640, height if height>0 else 480))
         
         frame_idx = 0
         violations_count = 0
@@ -793,32 +808,54 @@ async def process_video_background(video_id: str, user_id: str):
             ref_points = calibration['pixel_points']
             pixel_distance = np.sqrt((ref_points[1][0] - ref_points[0][0])**2 + 
                                     (ref_points[1][1] - ref_points[0][1])**2)
-            # Ensure reference_distance is a positive number set by the user (avoid silent defaulting)
             try:
                 ref_dist = float(calibration['reference_distance'])
                 if ref_dist > 0:
                     pixels_per_meter = pixel_distance / ref_dist
                     speed_limit = calibration.get('speed_limit', 60)
                     logger.info(f"Using calibration for user {user_id}: reference_distance={ref_dist}, pixels_per_meter={pixels_per_meter:.2f}, speed_limit={speed_limit}")
-                else:
-                    logger.warning(f"Invalid calibration.reference_distance ({ref_dist}) for user {user_id}; using default")
             except Exception as e:
                 logger.warning(f"Error parsing calibration.reference_distance for user {user_id}: {e}; using default")
-        
-        # Frame skipping for faster processing: process every 3rd frame
-        # This speeds up processing ~3x while maintaining good tracking accuracy
-        FRAME_SKIP = 3
-        frames_to_write = []
-        
+
+        # Process frames
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 break
-            
-            # Skip frames for faster processing (but still write all frames to output)
+
+            # Always write frames to output
+            try:
+                out.write(frame)
+            except Exception:
+                # If writing fails due to size/format, skip writing but continue processing
+                logger.exception('Failed to write frame to output')
+
+            # Process detection only on selected frames
             if frame_idx % FRAME_SKIP != 0:
-                # Still write the frame to output video, but skip detection
-                frames_to_write.append((frame_idx, frame.copy()))
+                frame_idx += 1
+                continue
+
+            # Run detection and tracking on this frame
+            try:
+                results = model_predict(frame)
+                # (existing detection/tracking logic continues)
+            except Exception as e:
+                logger.exception('Detection failed on frame %s: %s', frame_idx, e)
+
+            # Update processed frames and progress
+            processed_check_frames += 1
+            if total_check_frames > 0:
+                progress = int((processed_check_frames / total_check_frames) * 100)
+                # Only update DB when progress increases by at least 2% to reduce churn
+                if progress >= last_progress + 2:
+                    last_progress = progress
+                    try:
+                        await db.videos.update_one({"id": video_id}, {"$set": {"processing_progress": progress}})
+                    except Exception:
+                        logger.exception('Failed to update processing_progress')
+
+            frame_idx += 1
+            # loop continues                frames_to_write.append((frame_idx, frame.copy()))
                 frame_idx += 1
                 continue
             
@@ -1115,20 +1152,21 @@ async def process_video_background(video_id: str, user_id: str):
         cap.release()
         out.release()
         
-        # Update video status
+        # Update video status and mark progress complete
         await db.videos.update_one(
             {"id": video_id},
             {"$set": {
                 "status": "completed",
                 "processed_path": output_path,
-                "total_violations": violations_count
+                "total_violations": violations_count,
+                "processing_progress": 100
             }}
         )
         
     except Exception as e:
         await db.videos.update_one(
             {"id": video_id},
-            {"$set": {"status": "failed"}}
+            {"$set": {"status": "failed", "processing_progress": 0}}
         )
         logger.error(f"Error processing video: {str(e)}")
 

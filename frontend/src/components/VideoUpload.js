@@ -6,12 +6,75 @@ const VideoUpload = ({ onUpload, loading }) => {
   const fileInputRef = useRef(null);
   const [progress, setProgress] = useState(0);
 
+  // Camera recording state
+  const [recording, setRecording] = useState(false);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [facingMode, setFacingMode] = useState('environment');
+  const [fastProcess, setFastProcess] = useState(false);
+  const videoRef = useRef(null);
+  const mediaStreamRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const recordedChunksRef = useRef([]);
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode }, audio: true });
+      mediaStreamRef.current = stream;
+      if (videoRef.current) videoRef.current.srcObject = stream;
+      setCameraActive(true);
+    } catch (err) {
+      console.error('Camera start failed', err);
+      alert('Could not access camera. Please allow camera permissions or use the file picker.');
+    }
+  };
+
+  const stopCamera = () => {
+    const stream = mediaStreamRef.current;
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    mediaStreamRef.current = null;
+    setCameraActive(false);
+  };
+
+  const flipCamera = async () => {
+    setFacingMode(prev => (prev === 'environment' ? 'user' : 'environment'));
+    stopCamera();
+    await startCamera();
+  };
+
+  const startRecording = () => {
+    if (!mediaStreamRef.current) return startCamera().then(() => startRecording());
+    recordedChunksRef.current = [];
+    const options = { mimeType: 'video/webm;codecs=vp9' };
+    const mr = new MediaRecorder(mediaStreamRef.current, options);
+    mediaRecorderRef.current = mr;
+    mr.ondataavailable = (e) => { if (e.data && e.data.size) recordedChunksRef.current.push(e.data); };
+    mr.onstop = async () => {
+      const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+      const file = new File([blob], 'recording.webm', { type: 'video/webm' });
+      await handleRecordedFile(file);
+    };
+    mr.start();
+    setRecording(true);
+  };
+
+  const stopRecording = () => {
+    const mr = mediaRecorderRef.current;
+    if (mr && mr.state !== 'inactive') mr.stop();
+    setRecording(false);
+    // keep camera open so user can re-record or flip
+  };
+
+  const handleRecordedFile = async (file) => {
+    const progressCb = (p) => setProgress(p);
+    await onUpload(file, progressCb, { fast: fastProcess });
+    setProgress(0);
+  };
+
   const handleFileSelect = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Basic validation: allow common video formats and limit size
-    const allowedExts = ['.mp4', '.mov', '.avi', '.mkv'];
+    const allowedExts = ['.mp4', '.mov', '.avi', '.mkv', '.webm'];
     const name = file.name || '';
     const ext = name.slice(name.lastIndexOf('.')).toLowerCase();
     const MAX_SIZE = 500 * 1024 * 1024; // 500MB
@@ -27,7 +90,7 @@ const VideoUpload = ({ onUpload, loading }) => {
     }
 
     const progressCb = (p) => setProgress(p);
-    await onUpload(file, progressCb);
+    await onUpload(file, progressCb, { fast: fastProcess });
     setProgress(0);
   };
 
@@ -63,11 +126,42 @@ const VideoUpload = ({ onUpload, loading }) => {
             </div>
           )}
         </div>
+
+        {/* Recording/camera controls */}
+        <div className="flex items-center gap-2">
+          {!cameraActive ? (
+            <>
+              <button type="button" onClick={startCamera} className="px-3 py-1 bg-blue-600 text-white rounded">Use Camera</button>
+              <button type="button" onClick={() => fileInputRef.current?.click()} className="px-3 py-1 bg-slate-100 rounded">Choose File</button>
+            </>
+          ) : (
+            <>
+              {recording ? (
+                <button type="button" onClick={stopRecording} className="px-3 py-1 bg-red-600 text-white rounded">Stop</button>
+              ) : (
+                <button type="button" onClick={startRecording} className="px-3 py-1 bg-green-600 text-white rounded">Record</button>
+              )}
+              <button type="button" onClick={flipCamera} className="px-3 py-1 bg-slate-100 rounded">Flip</button>
+              <button type="button" onClick={stopCamera} className="px-3 py-1 bg-red-600 text-white rounded">Close</button>
+            </>
+          )}
+
+          <label className="inline-flex items-center gap-2 text-xs">
+            <input type="checkbox" checked={fastProcess} onChange={(e) => setFastProcess(e.target.checked)} />
+            <span>Quick processing</span>
+          </label>
+        </div>
+
+        {cameraActive && (
+          <div className="mt-3">
+            <video ref={videoRef} autoPlay playsInline muted className="w-[280px] h-auto rounded" />
+          </div>
+        )}
+
         <input
           ref={fileInputRef}
           type="file"
           accept="video/*"
-          capture="environment"
           onChange={handleFileSelect}
           className="hidden"
           data-testid="video-file-input"
