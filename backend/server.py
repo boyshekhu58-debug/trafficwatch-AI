@@ -768,6 +768,10 @@ async def presign_video_download(video_id: str, session_token: Optional[str] = C
         raise HTTPException(status_code=404, detail="Processed video not found yet")
 
     processed_path = video['processed_path']
+    # If processed_path is a remote URL (e.g., Cloudinary), redirect the client to that URL
+    if isinstance(processed_path, str) and processed_path.startswith(('http://', 'https://')):
+        return RedirectResponse(url=processed_path)
+
     # Local file - return the file directly
     if Path(processed_path).exists():
         return FileResponse(processed_path, media_type='video/mp4')

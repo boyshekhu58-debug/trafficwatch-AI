@@ -90,6 +90,18 @@ def process_job(video_doc):
         shutil.copyfile(output_local, str(dest))
         processed_path = str(dest)
 
+        # Try uploading processed video to Cloudinary (if configured). If upload succeeds,
+        # use the returned secure URL as the processed_path stored in DB.
+        try:
+            from utils.cloudinary_config import upload_video_to_cloudinary
+
+            cloud_url = upload_video_to_cloudinary(str(dest))
+            if cloud_url:
+                processed_path = cloud_url
+                logger.info('Uploaded processed video to Cloudinary: %s', cloud_url)
+        except Exception as e:
+            logger.debug('Cloudinary upload not available or failed: %s', e)
+
         # Update DB
         update = {
             'status': 'completed',
