@@ -159,14 +159,15 @@ const Dashboard = ({ user, setUser }) => {
         withCredentials: true,
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      const responseData = response.data;
-      await axios.post(`${API}/videos/${responseData.id}/process`, null, { withCredentials: true });
+      const payload = response.data;
+      const video = payload && payload.video ? payload.video : payload;
+      await axios.post(`${API}/videos/${video.id}/process`, null, { withCredentials: true });
       toast.success('Video uploaded successfully! Processing started...');
 
 
       loadData(true); // Force reload
 
-      const videoId = responseData.id;
+      const videoId = video.id;
       videoPollingIntervals.current[videoId] = setInterval(async () => {
         try {
           const videoRes = await axios.get(`${API}/videos/${videoId}`, { withCredentials: true, timeout: 3000 });

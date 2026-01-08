@@ -53,7 +53,9 @@ const VideosPage = () => {
         withCredentials: true,
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      const video = response.data;
+      // Server sometimes returns a wrapper { success, video, ... }; support both formats
+      const payload = response.data;
+      const video = payload && payload.video ? payload.video : payload;
       // Start processing (server will process in background as before)
       await axios.post(`${API}/videos/${video.id}/process`, null, { withCredentials: true });
       toast.success('Video uploaded successfully! Processing started...');

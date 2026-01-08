@@ -648,12 +648,17 @@ async def create_session(session_id: str, response: Response):
         await db.user_sessions.insert_one(session_dict)
         
         # Set cookie
+        # For local development over HTTP, secure cookies (secure=True + samesite='none')
+        # will be rejected by browsers. Make this configurable via COOKIE_SECURE env var.
+        cookie_secure = os.getenv("COOKIE_SECURE", "false").lower() in ("1", "true", "yes")
+        cookie_samesite = "none" if cookie_secure else "lax"
+
         response.set_cookie(
             key="session_token",
             value=session_token,
             httponly=True,
-            secure=True,
-            samesite="none",
+            secure=cookie_secure,
+            samesite=cookie_samesite,
             max_age=7 * 24 * 60 * 60,
             path="/"
         )
@@ -714,7 +719,14 @@ async def upload_video(file: UploadFile = File(...), session_token: Optional[str
     video_dict['created_at'] = video_dict['created_at'].isoformat()
     await db.videos.insert_one(video_dict)
     
-    return video
+    # Return a consistent response so frontend does not hang waiting for fields that do not exist yet.
+    return {
+        "success": True,
+        "video": video,
+        "media_url": None,
+        "violations": 0,
+        "violation_types": {}
+    }
 
 
 @api_router.post("/videos/complete")
@@ -739,7 +751,14 @@ async def complete_video_upload(object_key: str, filename: str, session_token: O
     video_dict['created_at'] = video_dict['created_at'].isoformat()
     await db.videos.insert_one(video_dict)
 
-    return {"status": "ok", "video": video}
+    # Consistent response so the frontend can rely on these fields being present
+    return {
+        "success": True,
+        "video": video,
+        "media_url": None,
+        "violations": 0,
+        "violation_types": {}
+    }
 
 @api_router.post("/videos/{video_id}/process")
 async def process_video(video_id: str, session_token: Optional[str] = Cookie(None)):
@@ -1136,7 +1155,7 @@ async def process_video_background(video_id: str, user_id: str):
         cap.release()
         out.release()
         
-        # Update video status
+        # Update video status (initially set to local output path)
         await db.videos.update_one(
             {"id": video_id},
             {"$set": {
@@ -1145,6 +1164,40 @@ async def process_video_background(video_id: str, user_id: str):
                 "total_violations": violations_count
             }}
         )
+
+        # Attempt Cloudinary upload and insert a lightweight violation summary if the upload succeeds
+        try:
+            logger.info('Attempting Cloudinary upload for video %s', video_id)
+            from utils.cloudinary_config import upload_video_to_cloudinary
+            loop = asyncio.get_running_loop()
+            cloud_url = await loop.run_in_executor(None, functools.partial(upload_video_to_cloudinary, output_path))
+            if cloud_url:
+                # Replace processed_path with cloud URL in the video record
+                await db.videos.update_one({"id": video_id}, {"$set": {"processed_path": cloud_url}})
+                processed_path = cloud_url
+                logger.info('Uploaded processed video to Cloudinary: %s', cloud_url)
+
+                # Aggregate violation types (counts) for this video and insert a small summary document
+                agg = await db.violations.aggregate([
+                    {"$match": {"video_id": video_id}},
+                    {"$group": {"_id": "$violation_type", "count": {"$sum": 1}}}
+                ]).to_list(None)
+                violation_types = {d["_id"]: int(d["count"]) for d in agg}
+
+                violation_summary = {
+                    'video_id': video_id,
+                    'user_id': user_id,
+                    'media_url': cloud_url,
+                    'violations': int(violations_count),
+                    'violation_types': violation_types,
+                    'created_at': datetime.utcnow()
+                }
+                await db.violations.insert_one(violation_summary)
+                logger.info('Inserted violation summary for video %s into db.violations', video_id)
+            else:
+                logger.info('Cloudinary upload not configured or returned no URL for video %s; leaving processed_path as local file', video_id)
+        except Exception as e:
+            logger.exception('Cloudinary upload or summary insertion failed for %s: %s', video_id, e)
         
     except Exception as e:
         await db.videos.update_one(
@@ -1187,37 +1240,7 @@ async def get_video(video_id: str, session_token: Optional[str] = Cookie(None)):
         raise HTTPException(status_code=404, detail="Video not found")
     return video
 
-@api_router.get("/videos/{video_id}/download")
-async def download_processed_video(video_id: str, session_token: Optional[str] = Cookie(None)):
-    user = await get_current_user(session_token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    
-    video = await db.videos.find_one({"id": video_id, "user_id": user.id}, {"_id": 0})
-    if not video or not video.get('processed_path'):
-        raise HTTPException(status_code=404, detail="Processed video not found")
-    
-    file_path = Path(video['processed_path'])
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Processed video file missing on disk")
-    headers = {
-        "Content-Disposition": f'attachment; filename="processed_{video["filename"]}"',
-        "Cache-Control": "public, max-age=86400",
-        "Accept-Ranges": "bytes",
-    }
-    if AIOFILES_AVAILABLE:
-        async def file_iter(path, chunk_size: int = 4 * 1024 * 1024):
-            async with aiofiles.open(path, "rb") as f:
-                while True:
-                    chunk = await f.read(chunk_size)
-                    if not chunk:
-                        break
-                    yield chunk
-        return StreamingResponse(file_iter(file_path), media_type="video/mp4", headers=headers)
-    else:
-        resp = FileResponse(str(file_path), media_type="video/mp4", filename=f"processed_{video['filename']}")
-        resp.headers.update(headers)
-        return resp
+# Duplicate download handler removed — use the unified /videos/{video_id}/download endpoint defined earlier which handles both remote (Cloudinary) URLs and local files.
 
 
 @api_router.post("/videos/{video_id}/extract_frames")
