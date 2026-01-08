@@ -117,6 +117,21 @@ start.bat
 
 **Note:** The command must be run from the **project root directory** (the folder containing `start.ps1`, `start.bat`, `backend/`, and `frontend/` folders).
 
+---
+
+## Video processing worker (local uploads)
+
+The included video worker polls MongoDB for uploaded videos and processes them asynchronously using the local YOLO model.
+
+- For typical usage, upload videos via the backend `POST /api/videos/upload` endpoint (handled by the server), which stores uploads in `backend/uploads`.
+- Run the worker to process uploads and write processed outputs to `backend/processed`:
+
+```bash
+python backend/process_video_worker.py
+```
+
+**Note:** S3 direct-upload support has been removed. For cloud-hosted media, you can use a service like Cloudinary — the Cloudinary SDK has been added to the backend requirements (see `backend/requirements.txt`). See `backend/.env.example` for sample Cloudinary environment variables to set when enabling Cloudinary.
+
 **Manual Start (All Platforms):**
 ```bash
 # Terminal 1 - Backend

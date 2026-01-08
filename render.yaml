@@ -21,4 +21,4 @@ services:
 # Notes:
 # - Remove values from this file and set sensitive vars via Render dashboard Secrets.
 # - Render sets the $PORT env var automatically; backend reads it and binds to 0.0.0.0.
-# - Consider attaching a Persistent Disk or using S3 for model/uploads to avoid ephemeral storage issues.
+# - Consider attaching a Persistent Disk or using a cloud media host (e.g., Cloudinary) for model/uploads to avoid ephemeral storage issues.

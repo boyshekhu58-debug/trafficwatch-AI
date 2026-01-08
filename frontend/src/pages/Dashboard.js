@@ -152,42 +152,33 @@ const Dashboard = ({ user, setUser }) => {
   const handleVideoUpload = async (file) => {
     setLoading(true);
     try {
+      // Upload directly via backend endpoint
       const formData = new FormData();
       formData.append('file', file);
-      
       const response = await axios.post(`${API}/videos/upload`, formData, {
         withCredentials: true,
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      
-      toast.success('Video uploaded successfully!');
-      
-      // Start processing
-      await axios.post(`${API}/videos/${response.data.id}/process`, null, {
-        withCredentials: true
-      });
-      
-      toast.info('Processing started...');
+      const payload = response.data;
+      const video = payload && payload.video ? payload.video : payload;
+      await axios.post(`${API}/videos/${video.id}/process`, null, { withCredentials: true });
+      toast.success('Video uploaded successfully! Processing started...');
+
+
       loadData(true); // Force reload
-      
-      // Poll for completion - optimized interval (3 seconds for videos since they take longer)
-      const videoId = response.data.id;
+
+      const videoId = video.id;
       videoPollingIntervals.current[videoId] = setInterval(async () => {
         try {
-          const videoRes = await axios.get(`${API}/videos/${videoId}`, { 
-            withCredentials: true,
-            timeout: 3000
-          });
+          const videoRes = await axios.get(`${API}/videos/${videoId}`, { withCredentials: true, timeout: 3000 });
           if (videoRes.data.status === 'completed' || videoRes.data.status === 'failed') {
             clearInterval(videoPollingIntervals.current[videoId]);
             delete videoPollingIntervals.current[videoId];
-            
+
             if (videoRes.data.status === 'completed') {
               const violationCount = videoRes.data.total_violations || 0;
               toast.success(`Video processing complete! Found ${violationCount} violation(s).`);
               playNotificationSound('success');
-              
-              // If violations found, show additional notification
               if (violationCount > 0) {
                 setTimeout(() => {
                   toast.info('Review violations in the Violations tab', { duration: 5000 });
@@ -203,9 +194,9 @@ const Dashboard = ({ user, setUser }) => {
           clearInterval(videoPollingIntervals.current[videoId]);
           delete videoPollingIntervals.current[videoId];
         }
-      }, 3000); // Poll every 3 seconds for videos (reduced server load, faster than before)
+      }, 3000);
     } catch (error) {
-      toast.error('Upload failed: ' + error.message);
+      toast.error('Upload failed: ' + (error.response?.data?.detail || error.message));
     } finally {
       setLoading(false);
     }
@@ -276,6 +267,11 @@ const Dashboard = ({ user, setUser }) => {
 
   const handleDownload = async (videoId) => {
     try {
+      const v = videos.find(x => x.id === videoId);
+      if (v && v.processed_path && (v.processed_path.startsWith('http://') || v.processed_path.startsWith('https://'))) {
+        window.open(v.processed_path, '_blank');
+        return;
+      }
       window.open(`${API}/videos/${videoId}/download`, '_blank');
     } catch (error) {
       toast.error('Download failed');

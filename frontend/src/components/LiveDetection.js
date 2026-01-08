@@ -192,13 +192,23 @@ const LiveDetection = ({ onRecordingComplete, onViolationsDetected }) => {
       
       formData.append('file', file);
 
-      // Upload video
+      // Upload directly via backend endpoint (multipart)
       const uploadResponse = await axios.post(`${API}/videos/upload`, formData, {
         withCredentials: true,
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-
       toast.success('Recording uploaded successfully!');
+
+      // Extract uploaded video object (support wrapper or bare object)
+      const payload = uploadResponse.data;
+      const uploadedVideo = payload && payload.video ? payload.video : payload;
+
+      // Start processing
+      await axios.post(`${API}/videos/${uploadedVideo.id}/process`, null, {
+        withCredentials: true
+      });
+
+      toast.info('Processing started...');
 
       // Auto-save if enabled - download as MP4 (even though it's webm, browser will handle it)
       if (autoSave) {
@@ -217,15 +227,8 @@ const LiveDetection = ({ onRecordingComplete, onViolationsDetected }) => {
         toast.info('Recording saved to downloads');
       }
 
-      // Start processing
-      await axios.post(`${API}/videos/${uploadResponse.data.id}/process`, null, {
-        withCredentials: true
-      });
-
-      toast.info('Processing started...');
-      
       if (onRecordingComplete) {
-        onRecordingComplete(uploadResponse.data.id);
+        onRecordingComplete(uploadedVideo.id);
       }
 
       // Poll for completion
