@@ -46,37 +46,18 @@ const VideosPage = () => {
   const handleVideoUpload = async (file) => {
     setLoading(true);
     try {
-      // Try presigned upload (fast/direct to S3)
-      let video = null;
-      try {
-        const presignRes = await axios.post(`${API}/videos/presign?filename=${encodeURIComponent(file.name)}&content_type=${encodeURIComponent(file.type)}`, null, { withCredentials: true });
-        const presign = presignRes.data.presign || presignRes.data;
-        if (presign && presign.upload_url) {
-          // Upload directly to presigned URL
-          await axios.put(presign.upload_url, file, { headers: { 'Content-Type': file.type } });
-          // Register completed upload with backend so the worker can pick it up
-          const completeRes = await axios.post(`${API}/videos/complete?object_key=${encodeURIComponent(presign.object_key)}&filename=${encodeURIComponent(file.name)}`, null, { withCredentials: true });
-          video = completeRes.data.video || completeRes.data;
-          toast.success('Video uploaded to storage successfully! Processing will start shortly.');
-        }
-      } catch (err) {
-        // Presign/upload may fail due to CORS or misconfiguration — fall back to direct upload to backend
-        console.debug('Presign upload failed, falling back to direct upload:', err?.message || err);
-      }
+      // Upload directly via backend endpoint (multipart)
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await axios.post(`${API}/videos/upload`, formData, {
+        withCredentials: true,
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      const video = response.data;
+      // Start processing (server will process in background as before)
+      await axios.post(`${API}/videos/${video.id}/process`, null, { withCredentials: true });
+      toast.success('Video uploaded successfully! Processing started...');
 
-      if (!video) {
-        // Fallback: upload via backend endpoint (multipart)
-        const formData = new FormData();
-        formData.append('file', file);
-        const response = await axios.post(`${API}/videos/upload`, formData, {
-          withCredentials: true,
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
-        video = response.data;
-        // Start processing (server will process in background as before)
-        await axios.post(`${API}/videos/${video.id}/process`, null, { withCredentials: true });
-        toast.success('Video uploaded successfully! Processing started...');
-      }
 
       refreshData(); // Refresh all data
 

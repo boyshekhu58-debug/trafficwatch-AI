@@ -31,15 +31,9 @@ import shutil
 import re
 import functools
 
-# Optional S3 utilities for offloading uploads/processed artifacts
-try:
-    import s3_utils
-    S3_ENABLED = getattr(s3_utils, 'S3_ENABLED', False)
-    S3_BUCKET = getattr(s3_utils, 'S3_BUCKET', None)
-except Exception:
-    s3_utils = None
-    S3_ENABLED = False
-    S3_BUCKET = None
+# S3 support removed — local uploads only
+S3_ENABLED = False
+S3_BUCKET = None
 
 # Optional OCR support for number plate extraction
 try:
@@ -722,24 +716,6 @@ async def upload_video(file: UploadFile = File(...), session_token: Optional[str
     
     return video
 
-@api_router.post("/videos/presign")
-async def presign_video_upload(filename: str, content_type: Optional[str] = None, session_token: Optional[str] = Cookie(None)):
-    """Return a presigned PUT URL (S3) or a local object_key for upload.
-    Frontend should upload directly to the returned `upload_url` and then call `/videos/complete`.
-    """
-    user = await get_current_user(session_token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    # Generate unique key
-    key = f"uploads/{str(uuid.uuid4())}{Path(filename).suffix}"
-
-    try:
-        presign = s3_utils.generate_presigned_put_url(key, content_type=content_type)
-        return {"status": "ok", "presign": presign}
-    except Exception as e:
-        logger.exception('Failed to generate presigned URL: %s', e)
-        raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.post("/videos/complete")
 async def complete_video_upload(object_key: str, filename: str, session_token: Optional[str] = Cookie(None)):
@@ -748,12 +724,8 @@ async def complete_video_upload(object_key: str, filename: str, session_token: O
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    # Build original_path
-    if S3_ENABLED:
-        original_path = f"s3://{S3_BUCKET}/{object_key}"
-    else:
-        # object_key may be a relative path for local mode
-        original_path = str(Path(object_key))
+    # object_key is expected to be a local path (relative or absolute)
+    original_path = str(Path(object_key))
 
     video_id = str(uuid.uuid4())
     video = Video(
@@ -796,14 +768,6 @@ async def presign_video_download(video_id: str, session_token: Optional[str] = C
         raise HTTPException(status_code=404, detail="Processed video not found yet")
 
     processed_path = video['processed_path']
-    if S3_ENABLED and processed_path.startswith('s3://'):
-        # Redirect to presigned GET URL
-        _, key = s3_utils.parse_s3_url(processed_path)
-        get_url = s3_utils.generate_presigned_get_url(key)
-        if not get_url:
-            raise HTTPException(status_code=500, detail="Failed to generate download URL")
-        return RedirectResponse(url=get_url)
-
     # Local file - return the file directly
     if Path(processed_path).exists():
         return FileResponse(processed_path, media_type='video/mp4')

@@ -4,8 +4,9 @@ This repository includes a simple video worker that polls MongoDB for uploaded v
 
 Requirements:
 - `MONGO_URL` and `DB_NAME` environment variables must be set
-- If using S3, configure `S3_BUCKET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION` in environment
-- **Dependencies:** Install Python deps in `backend` with `pip install -r requirements.txt` (this includes `pymongo`, `boto3`, `opencv-python`, etc.)
+- **Dependencies:** Install Python deps in `backend` with `pip install -r requirements.txt` (this includes `pymongo`, `opencv-python`, etc.)
+
+**Note:** S3 support has been removed. The worker reads videos from the local `backend/uploads` folder and writes processed outputs to `backend/processed`. For cloud-hosted media, install and configure the Cloudinary SDK.
 
 Run the worker:
 

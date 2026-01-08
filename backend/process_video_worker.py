@@ -24,7 +24,8 @@ except Exception:
     raise
 
 from datetime import datetime
-from s3_utils import S3_ENABLED, parse_s3_url, download_file, upload_file
+# S3 support removed; legacy s3:// URLs will be mapped to local files
+
 import video_processing
 import shutil
 
@@ -55,10 +56,15 @@ def process_job(video_doc):
     try:
         # Download input
         if original_path and original_path.startswith('s3://'):
-            # parse key and download
-            _, key = parse_s3_url(original_path)
+            # Handle legacy s3 URLs by mapping to local paths under backend directory
+            # s3://bucket/path -> backend/path
+            parsed = original_path[5:].split('/', 1)
+            key = parsed[1] if len(parsed) > 1 else ''
+            input_src = ROOT_DIR / key
+            if not input_src.exists():
+                raise FileNotFoundError(f'Input video not found: {input_src}')
             input_local = str(tmpdir / 'input.mp4')
-            download_file(key, input_local)
+            shutil.copyfile(str(input_src), input_local)
         else:
             # local path - copy
             input_src = Path(original_path)
@@ -77,9 +83,12 @@ def process_job(video_doc):
         # Process
         result = video_processing.process_video_file(input_local, output_local, pixels_per_meter, speed_limit, frame_skip=3)
 
-        # Upload processed file
+        # Move processed file to backend processed folder
         processed_key = f'processed_videos/{video_id}_processed.mp4'
-        processed_path = upload_file(output_local, processed_key)
+        dest = ROOT_DIR / processed_key
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(output_local, str(dest))
+        processed_path = str(dest)
 
         # Update DB
         update = {

@@ -152,31 +152,17 @@ const Dashboard = ({ user, setUser }) => {
   const handleVideoUpload = async (file) => {
     setLoading(true);
     try {
-      let responseData = null;
-      try {
-        const presignRes = await axios.post(`${API}/videos/presign?filename=${encodeURIComponent(file.name)}&content_type=${encodeURIComponent(file.type)}`, null, { withCredentials: true });
-        const presign = presignRes.data.presign || presignRes.data;
-        if (presign && presign.upload_url) {
-          await axios.put(presign.upload_url, file, { headers: { 'Content-Type': file.type } });
-          const completeRes = await axios.post(`${API}/videos/complete?object_key=${encodeURIComponent(presign.object_key)}&filename=${encodeURIComponent(file.name)}`, null, { withCredentials: true });
-          responseData = completeRes.data.video || completeRes.data;
-          toast.success('Video uploaded to storage successfully! Processing will start shortly.');
-        }
-      } catch (err) {
-        console.debug('Presign failed; falling back to direct upload', err?.message || err);
-      }
+      // Upload directly via backend endpoint
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await axios.post(`${API}/videos/upload`, formData, {
+        withCredentials: true,
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      const responseData = response.data;
+      await axios.post(`${API}/videos/${responseData.id}/process`, null, { withCredentials: true });
+      toast.success('Video uploaded successfully! Processing started...');
 
-      if (!responseData) {
-        const formData = new FormData();
-        formData.append('file', file);
-        const response = await axios.post(`${API}/videos/upload`, formData, {
-          withCredentials: true,
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
-        responseData = response.data;
-        await axios.post(`${API}/videos/${responseData.id}/process`, null, { withCredentials: true });
-        toast.success('Video uploaded successfully! Processing started...');
-      }
 
       loadData(true); // Force reload
 

@@ -119,27 +119,18 @@ start.bat
 
 ---
 
-## Offloading video storage & processing (S3 + worker)
+## Video processing worker (local uploads)
 
-For better scalability and faster uploads, you can configure an S3 bucket and run the included video worker which polls MongoDB for uploaded videos and processes them asynchronously.
+The included video worker polls MongoDB for uploaded videos and processes them asynchronously using the local YOLO model.
 
-1) Set these environment variables for S3 support:
-
-- `S3_BUCKET` (required)
-- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` (if using AWS)
-
-2) Use the presign endpoint on the backend to get an upload URL (frontend will upload directly to S3):
-
-- POST `/api/videos/presign` with `filename` and optional `content_type` -> returns a presigned URL
-- After uploading to S3, call POST `/api/videos/complete` with `object_key` and `filename` to register the upload
-
-3) Run the worker to process uploads and write processed outputs back to S3:
+- For typical usage, upload videos via the backend `POST /api/videos/upload` endpoint (handled by the server), which stores uploads in `backend/uploads`.
+- Run the worker to process uploads and write processed outputs to `backend/processed`:
 
 ```bash
 python backend/process_video_worker.py
 ```
 
-The worker writes outputs to `processed_videos/{video_id}_processed.mp4` and updates the video document in MongoDB when processing is complete.
+**Note:** S3 direct-upload support has been removed. For cloud-hosted media, you can use a service like Cloudinary — the Cloudinary SDK has been added to the backend requirements (see `backend/requirements.txt`).
 
 **Manual Start (All Platforms):**
 ```bash

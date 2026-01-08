@@ -2,8 +2,8 @@ annotated-types==0.7.0
 anyio==4.11.0
 bcrypt==4.1.3
 black==25.11.0
-boto3==1.41.3
-botocore==1.41.3
+# S3 packages removed (boto3/botocore) - using local uploads or Cloudinary instead
+
 certifi==2025.11.12
 cffi==2.0.0
 charset-normalizer==3.4.4
@@ -72,8 +72,8 @@ requests==2.32.5
 requests-oauthlib==2.0.0
 rich==14.2.0
 rsa==4.9.1
-s3transfer==0.15.0
-s5cmd==0.2.0
+cloudinary
+# s3transfer and s5cmd removed (S3 support removed)
 scipy==1.16.3
 shellingham==1.5.4
 six==1.17.0
