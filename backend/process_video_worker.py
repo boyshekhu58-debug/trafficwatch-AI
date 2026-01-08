@@ -147,6 +147,14 @@ def process_job(video_doc):
 
 
 if __name__ == '__main__':
+    # Allow disabling the worker in environments where it's not needed (e.g., front-end-only deployments)
+    VIDEO_WORKER_ENABLED = os.getenv('VIDEO_WORKER_ENABLED', 'true').lower() in ('1', 'true', 'yes')
+    if not VIDEO_WORKER_ENABLED:
+        logger.info('Video worker disabled via VIDEO_WORKER_ENABLED env var; exiting without starting the loop.')
+        import sys
+
+        sys.exit(0)
+
     logger.info('Video worker started, polling for uploaded videos...')
     while True:
         try:

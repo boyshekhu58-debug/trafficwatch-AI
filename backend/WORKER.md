@@ -27,7 +27,11 @@ python backend/process_video_worker.py
 
 Behavior:
 - The worker picks a single document with `status: 'uploaded'` and atomically sets it to `processing`.
-- It downloads the input (from S3 or local uploads folder), processes using `video_processing.py`, uploads the processed artifact to `processed_videos/{video_id}_processed.mp4` (S3 or local processed folder), and updates the video document with `status`, `processed_path`, `total_violations`, `fps`, and `duration`.
+- It downloads the input (from local `backend/uploads`), processes using `video_processing.py`, uploads the processed artifact to Cloudinary when configured, and updates the video document with `status`, `processed_path`, `total_violations`, `fps`, and `duration`.
+
+Disable worker (optional):
+- If you deploy only the frontend or do not want the background worker to start in a given environment, set the environment variable `VIDEO_WORKER_ENABLED=false` before starting the worker. The script will exit immediately and not print the startup loop message.
+
 
 Notes:
 - This is intentionally a lightweight worker that avoids adding external brokers. For production-grade systems, consider using SQS, Redis + RQ, or Celery for job orchestration and retries.
