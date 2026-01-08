@@ -94,6 +94,12 @@ const VideosPage = () => {
 
   const handleDownload = async (videoId) => {
     try {
+      const v = videos.find(x => x.id === videoId);
+      if (v && v.processed_path && (v.processed_path.startsWith('http://') || v.processed_path.startsWith('https://'))) {
+        // Open cloud URL directly
+        window.open(v.processed_path, '_blank');
+        return;
+      }
       window.open(`${API}/videos/${videoId}/download`, '_blank');
     } catch (error) {
       toast.error('Download failed');
@@ -228,7 +234,8 @@ const VideosPage = () => {
                       {processedVideos.map(video => (
                         <div key={`processed-video-${video.id}`} className="bg-slate-800 dark:bg-slate-800 rounded-lg p-3 flex items-center justify-between hover:bg-slate-750 transition-colors">
                           <div className="flex items-center gap-3">
-                            <video className="w-40 h-24 rounded object-cover" controls src={`${API}/videos/${video.id}/download`} />
+                            {/* Use cloud URL or processed_path directly when available for faster CDN streaming */}
+                            <video className="w-40 h-24 rounded object-cover" controls src={video.processed_path || `${API}/videos/${video.id}/download`} />
                             <div>
                               <p className="text-white font-medium text-sm">{video.filename}</p>
                               <div className="text-xs text-slate-400">{video.duration?.toFixed(1)}s • {video.total_violations || 0} violations</div>
@@ -256,7 +263,7 @@ const VideosPage = () => {
                           <div className="mb-2">
                             <div className="text-xs text-slate-300">Frames for</div>
                             <div className="flex items-center gap-2 mt-1">
-                              <video className="w-24 h-12 rounded object-cover" controls src={`${API}/videos/${v.id}/download`} />
+                              <video className="w-24 h-12 rounded object-cover" controls src={v.processed_path || `${API}/videos/${v.id}/download`} />
                               <div className="text-sm text-white">{v.filename}</div>
                             </div>
                           </div>

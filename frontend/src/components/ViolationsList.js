@@ -53,6 +53,16 @@ const ViolationsList = ({ violations, videos, photos, selectedDate, onDateChange
     return video ? video.filename : 'Unknown';
   };
 
+  const getVideoById = (videoId) => videos.find(v => v.id === videoId);
+  const renderVideoPreview = (violation) => {
+    // Use violation.media_url if present, otherwise fall back to video's processed_path
+    const mediaUrl = violation?.media_url || (violation && getVideoById(violation.video_id)?.processed_path);
+    if (!mediaUrl) return getVideoName(violation.video_id);
+    return (
+      <video className="w-24 h-12 rounded object-cover" controls src={mediaUrl} />
+    );
+  };
+
   // Soft-sort violations by selected date (selected-date items first, then others)
   const sortedViolations = useMemo(() => {
     if (!selectedDate) return violations;
@@ -139,7 +149,7 @@ const ViolationsList = ({ violations, videos, photos, selectedDate, onDateChange
                           <span className="text-slate-800 dark:text-slate-100 text-sm capitalize">{getViolationLabel(violation.violation_type)}</span>
                         </div>
                       </td>
-                      <td className="py-3 text-slate-700 dark:text-slate-200 text-sm">{getVideoName(violation.video_id)}</td>
+                      <td className="py-3 text-slate-700 dark:text-slate-200 text-sm">{renderVideoPreview(violation)}</td>
                       <td className="py-3 text-slate-700 dark:text-slate-200 text-sm">{violation.plate_number ? <span className="text-green-500 font-semibold">{violation.plate_number}</span> : <span className="text-slate-400">-</span>}</td>
                       <td className="py-3 text-slate-700 dark:text-slate-200 text-sm">#{violation.track_id}</td>
                       <td className="py-3 text-slate-700 dark:text-slate-200 text-sm">{violation.timestamp ? violation.timestamp.toFixed(2) + 's' : '-'}</td>

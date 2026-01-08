@@ -266,6 +266,11 @@ const Dashboard = ({ user, setUser }) => {
 
   const handleDownload = async (videoId) => {
     try {
+      const v = videos.find(x => x.id === videoId);
+      if (v && v.processed_path && (v.processed_path.startsWith('http://') || v.processed_path.startsWith('https://'))) {
+        window.open(v.processed_path, '_blank');
+        return;
+      }
       window.open(`${API}/videos/${videoId}/download`, '_blank');
     } catch (error) {
       toast.error('Download failed');
