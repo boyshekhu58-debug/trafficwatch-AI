@@ -28,6 +28,9 @@ if not exist "frontend\node_modules" (
 REM Start backend in new window
 start "Backend Server" cmd /k "cd backend && venv\Scripts\python.exe -m uvicorn server:app --host 0.0.0.0 --port 8000"
 
+REM Start video worker in new window
+start "Video Worker" cmd /k "cd backend && venv\Scripts\python.exe process_video_worker.py"
+
 REM Wait a moment
 timeout /t 3 /nobreak >nul
 

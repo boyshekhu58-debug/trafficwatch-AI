@@ -1,7 +1,7 @@
 
 import uvicorn
 from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect, Cookie, Response, Query
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import StreamingResponse, FileResponse, RedirectResponse
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib import colors
 from reportlab.lib.units import inch
@@ -30,6 +30,16 @@ import requests
 import shutil
 import re
 import functools
+
+# Optional S3 utilities for offloading uploads/processed artifacts
+try:
+    import s3_utils
+    S3_ENABLED = getattr(s3_utils, 'S3_ENABLED', False)
+    S3_BUCKET = getattr(s3_utils, 'S3_BUCKET', None)
+except Exception:
+    s3_utils = None
+    S3_ENABLED = False
+    S3_BUCKET = None
 
 # Optional OCR support for number plate extraction
 try:
@@ -712,6 +722,53 @@ async def upload_video(file: UploadFile = File(...), session_token: Optional[str
     
     return video
 
+@api_router.post("/videos/presign")
+async def presign_video_upload(filename: str, content_type: Optional[str] = None, session_token: Optional[str] = Cookie(None)):
+    """Return a presigned PUT URL (S3) or a local object_key for upload.
+    Frontend should upload directly to the returned `upload_url` and then call `/videos/complete`.
+    """
+    user = await get_current_user(session_token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    # Generate unique key
+    key = f"uploads/{str(uuid.uuid4())}{Path(filename).suffix}"
+
+    try:
+        presign = s3_utils.generate_presigned_put_url(key, content_type=content_type)
+        return {"status": "ok", "presign": presign}
+    except Exception as e:
+        logger.exception('Failed to generate presigned URL: %s', e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/videos/complete")
+async def complete_video_upload(object_key: str, filename: str, session_token: Optional[str] = Cookie(None)):
+    """Register an already-uploaded object (S3 or local) as a Video and schedule processing."""
+    user = await get_current_user(session_token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    # Build original_path
+    if S3_ENABLED:
+        original_path = f"s3://{S3_BUCKET}/{object_key}"
+    else:
+        # object_key may be a relative path for local mode
+        original_path = str(Path(object_key))
+
+    video_id = str(uuid.uuid4())
+    video = Video(
+        id=video_id,
+        user_id=user.id,
+        filename=filename,
+        original_path=original_path,
+        status="uploaded"
+    )
+    video_dict = video.model_dump()
+    video_dict['created_at'] = video_dict['created_at'].isoformat()
+    await db.videos.insert_one(video_dict)
+
+    return {"status": "ok", "video": video}
+
 @api_router.post("/videos/{video_id}/process")
 async def process_video(video_id: str, session_token: Optional[str] = Cookie(None)):
     user = await get_current_user(session_token)
@@ -727,6 +784,31 @@ async def process_video(video_id: str, session_token: Optional[str] = Cookie(Non
     asyncio.create_task(process_video_background(video_id, user.id))
     
     return {"status": "processing", "video_id": video_id}
+
+@api_router.get("/videos/{video_id}/download")
+async def presign_video_download(video_id: str, session_token: Optional[str] = Cookie(None)):
+    user = await get_current_user(session_token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    video = await db.videos.find_one({"id": video_id, "user_id": user.id}, {"_id": 0})
+    if not video or not video.get('processed_path'):
+        raise HTTPException(status_code=404, detail="Processed video not found yet")
+
+    processed_path = video['processed_path']
+    if S3_ENABLED and processed_path.startswith('s3://'):
+        # Redirect to presigned GET URL
+        _, key = s3_utils.parse_s3_url(processed_path)
+        get_url = s3_utils.generate_presigned_get_url(key)
+        if not get_url:
+            raise HTTPException(status_code=500, detail="Failed to generate download URL")
+        return RedirectResponse(url=get_url)
+
+    # Local file - return the file directly
+    if Path(processed_path).exists():
+        return FileResponse(processed_path, media_type='video/mp4')
+
+    raise HTTPException(status_code=404, detail='Processed file not found')
 
 async def process_video_background(video_id: str, user_id: str):
     """Process video with YOLOv8 and detect violations"""

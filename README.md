@@ -117,6 +117,30 @@ start.bat
 
 **Note:** The command must be run from the **project root directory** (the folder containing `start.ps1`, `start.bat`, `backend/`, and `frontend/` folders).
 
+---
+
+## Offloading video storage & processing (S3 + worker)
+
+For better scalability and faster uploads, you can configure an S3 bucket and run the included video worker which polls MongoDB for uploaded videos and processes them asynchronously.
+
+1) Set these environment variables for S3 support:
+
+- `S3_BUCKET` (required)
+- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` (if using AWS)
+
+2) Use the presign endpoint on the backend to get an upload URL (frontend will upload directly to S3):
+
+- POST `/api/videos/presign` with `filename` and optional `content_type` -> returns a presigned URL
+- After uploading to S3, call POST `/api/videos/complete` with `object_key` and `filename` to register the upload
+
+3) Run the worker to process uploads and write processed outputs back to S3:
+
+```bash
+python backend/process_video_worker.py
+```
+
+The worker writes outputs to `processed_videos/{video_id}_processed.mp4` and updates the video document in MongoDB when processing is complete.
+
 **Manual Start (All Platforms):**
 ```bash
 # Terminal 1 - Backend

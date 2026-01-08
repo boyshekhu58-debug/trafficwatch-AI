@@ -192,13 +192,36 @@ const LiveDetection = ({ onRecordingComplete, onViolationsDetected }) => {
       
       formData.append('file', file);
 
-      // Upload video
-      const uploadResponse = await axios.post(`${API}/videos/upload`, formData, {
-        withCredentials: true,
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      // Try presigned upload first
+      let uploadResponse = null;
+      try {
+        const presignRes = await axios.post(`${API}/videos/presign?filename=${encodeURIComponent(file.name)}&content_type=${encodeURIComponent(file.type)}`, null, { withCredentials: true });
+        const presign = presignRes.data.presign || presignRes.data;
+        if (presign && presign.upload_url) {
+          await axios.put(presign.upload_url, file, { headers: { 'Content-Type': file.type } });
+          const completeRes = await axios.post(`${API}/videos/complete?object_key=${encodeURIComponent(presign.object_key)}&filename=${encodeURIComponent(file.name)}`, null, { withCredentials: true });
+          uploadResponse = { data: completeRes.data.video || completeRes.data };
+          toast.success('Recording uploaded to storage successfully! Processing will start shortly.');
+        }
+      } catch (err) {
+        console.debug('Presign upload failed, falling back:', err?.message || err);
+      }
 
-      toast.success('Recording uploaded successfully!');
+      if (!uploadResponse) {
+        // Fallback to direct upload
+        uploadResponse = await axios.post(`${API}/videos/upload`, formData, {
+          withCredentials: true,
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        toast.success('Recording uploaded successfully!');
+
+        // Start processing
+        await axios.post(`${API}/videos/${uploadResponse.data.id}/process`, null, {
+          withCredentials: true
+        });
+
+        toast.info('Processing started...');
+      }
 
       // Auto-save if enabled - download as MP4 (even though it's webm, browser will handle it)
       if (autoSave) {
@@ -217,13 +240,6 @@ const LiveDetection = ({ onRecordingComplete, onViolationsDetected }) => {
         toast.info('Recording saved to downloads');
       }
 
-      // Start processing
-      await axios.post(`${API}/videos/${uploadResponse.data.id}/process`, null, {
-        withCredentials: true
-      });
-
-      toast.info('Processing started...');
-      
       if (onRecordingComplete) {
         onRecordingComplete(uploadResponse.data.id);
       }

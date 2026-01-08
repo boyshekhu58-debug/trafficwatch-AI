@@ -48,6 +48,10 @@ if (-not (Test-Path "$scriptDir\frontend\node_modules")) {
 Write-Host "Starting Backend Server..." -ForegroundColor Yellow
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$scriptDir\backend'; Write-Host 'Backend Server Starting...' -ForegroundColor Green; .\venv\Scripts\python.exe -m uvicorn server:app --host 0.0.0.0 --port 8000"
 
+# Optionally start background worker in a new window
+Write-Host "Starting Video Worker..." -ForegroundColor Yellow
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$scriptDir\backend'; Write-Host 'Video Worker Starting...' -ForegroundColor Green; .\venv\Scripts\python.exe process_video_worker.py"
+
 # Wait a moment for backend to initialize
 Start-Sleep -Seconds 3
 
