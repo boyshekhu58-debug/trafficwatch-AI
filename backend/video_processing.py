@@ -34,6 +34,8 @@ def process_video_file(input_path: str, output_path: str, pixels_per_meter: floa
     frame_idx = 0
     violations_count = 0
     tracker_data = {}
+    from collections import defaultdict
+    violation_types = defaultdict(int)
 
     while cap.isOpened():
         ret, frame = cap.read()
@@ -60,13 +62,19 @@ def process_video_file(input_path: str, output_path: str, pixels_per_meter: floa
         except Exception:
             annotated = frame
 
-        # Simple violation counting: look for classes named 'no_helmet' or similar
+# Simple violation counting: look for classes named 'no_helmet', 'triple_ride', etc.
         if results and results[0].boxes is not None:
             classes = results[0].boxes.cls.cpu().numpy().astype(int)
             for cls in classes:
                 name = CLASS_NAMES.get(int(cls), '').lower()
+                # Normalize common violation types
                 if 'no_helmet' in name or 'nohelmet' in name or 'no helmet' in name:
                     violations_count += 1
+                    violation_types['no_helmet'] += 1
+                elif 'triple' in name or 'triple_ride' in name:
+                    violations_count += 1
+                    violation_types['triple_ride'] += 1
+                # Add more rules here for additional violation classes
 
         out.write(annotated)
         frame_idx += 1
@@ -84,6 +92,7 @@ def process_video_file(input_path: str, output_path: str, pixels_per_meter: floa
 
     return {
         'violations_count': int(violations_count),
+        'violation_types': dict(violation_types),
         'fps': float(fps),
         'duration': float(duration)
     }

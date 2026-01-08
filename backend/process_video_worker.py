@@ -112,6 +112,27 @@ def process_job(video_doc):
             'processed_at': datetime.utcnow().isoformat()
         }
         db.videos.update_one({'id': video_id}, {'$set': update})
+
+        # Insert a short violation summary into `db.violations` only when the processed file
+        # is available via an external URL (e.g., Cloudinary). We store ONLY the URL —
+        # never store video files in MongoDB.
+        try:
+            if isinstance(processed_path, str) and processed_path.startswith(('http://', 'https://')):
+                violation_doc = {
+                    'video_id': video_id,
+                    'user_id': user_id,
+                    'media_url': processed_path,
+                    'violations': int(result.get('violations_count', 0)),
+                    'violation_types': result.get('violation_types', {}),
+                    'created_at': datetime.utcnow()
+                }
+                db.violations.insert_one(violation_doc)
+                logger.info('Inserted violation summary for video %s into db.violations', video_id)
+            else:
+                logger.info('Processed video for %s not uploaded to Cloudinary; skipping db.violations insert', video_id)
+        except Exception as e:
+            logger.exception('Failed to insert violation summary for video %s: %s', video_id, e)
+
         logger.info(f'Processing completed for video {video_id} -> {processed_path}')
 
     except Exception as e:
