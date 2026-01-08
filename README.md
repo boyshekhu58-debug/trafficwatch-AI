@@ -130,7 +130,7 @@ The included video worker polls MongoDB for uploaded videos and processes them a
 python backend/process_video_worker.py
 ```
 
-**Note:** S3 direct-upload support has been removed. For cloud-hosted media, you can use a service like Cloudinary — the Cloudinary SDK has been added to the backend requirements (see `backend/requirements.txt`).
+**Note:** S3 direct-upload support has been removed. For cloud-hosted media, you can use a service like Cloudinary — the Cloudinary SDK has been added to the backend requirements (see `backend/requirements.txt`). See `backend/.env.example` for sample Cloudinary environment variables to set when enabling Cloudinary.
 
 **Manual Start (All Platforms):**
 ```bash

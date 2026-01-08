@@ -8,6 +8,17 @@ Requirements:
 
 **Note:** S3 support has been removed. The worker reads videos from the local `backend/uploads` folder and writes processed outputs to `backend/processed`. For cloud-hosted media, install and configure the Cloudinary SDK.
 
+Cloudinary configuration:
+- To enable automatic uploads of processed media to Cloudinary, set the following environment variables in `backend/.env` or in your deployment environment (an example is available at `backend/.env.example`):
+
+```
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
+```
+
+Once configured, processed videos will be uploaded to Cloudinary (and the DB will store the Cloudinary secure URL).
+
 Run the worker:
 
 ```bash
