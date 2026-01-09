@@ -1087,12 +1087,25 @@ async def process_video_background(video_id: str, user_id: str):
                             photo_id = str(uuid.uuid4())
                             photo_path = PHOTOS_DIR / f"{photo_id}.jpg"
                             cv2.imwrite(str(photo_path), crop)
+
+                            # Attempt Cloudinary upload for cropped violation photo
+                            processed_photo_path = str(photo_path)
+                            try:
+                                from utils.cloudinary_config import upload_image_to_cloudinary
+                                loop = asyncio.get_running_loop()
+                                cloud_url = await loop.run_in_executor(None, functools.partial(upload_image_to_cloudinary, str(photo_path)))
+                                if cloud_url:
+                                    processed_photo_path = cloud_url
+                                    logger.info('Uploaded violation photo to Cloudinary: %s', cloud_url)
+                            except Exception as e:
+                                logger.debug('Cloudinary upload for violation photo failed or not configured: %s', e)
+
                             photo = Photo(
                                 id=photo_id,
                                 user_id=user_id,
                                 filename=f"{photo_id}.jpg",
                                 original_path=str(photo_path),
-                                processed_path=str(photo_path),
+                                processed_path=processed_photo_path,
                                 status='completed',
                                 width=int(vx2 - vx1) if vx2>vx1 else 0,
                                 height=int(vy2 - vy1) if vy2>vy1 else 0
@@ -1190,6 +1203,7 @@ async def process_video_background(video_id: str, user_id: str):
                     'media_url': cloud_url,
                     'violations': int(violations_count),
                     'violation_types': violation_types,
+                    'is_summary': True,
                     'created_at': datetime.utcnow()
                 }
                 await db.violations.insert_one(violation_summary)
@@ -1475,6 +1489,7 @@ async def get_violations(
     video_id: Optional[str] = None, 
     photo_id: Optional[str] = None, 
     date: Optional[str] = None,
+    include_summaries: bool = Query(False),
     limit: int = 1000,
     skip: int = 0,
     session_token: Optional[str] = Cookie(None)
@@ -1513,9 +1528,40 @@ async def get_violations(
             }
         except Exception as e:
             logger.warning(f"Invalid date format: {date}, error: {e}")
+
+    # By default exclude summary documents (inserted after video processing). Set include_summaries=true to see them.
+    if not include_summaries:
+        query["is_summary"] = {"$ne": True}
     
     violations = await db.violations.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
+    
+    # Backfill missing violation_type for legacy violations (ensure frontend always has a type)
+    for v in violations:
+        if not v.get('violation_type') or v.get('violation_type', '').strip() == '':
+            # If missing, try to infer from other fields or default to 'unknown'
+            v['violation_type'] = 'unknown'
+            # Optionally, log so admin can manually review/update old violations
+            logger.debug(f"Violation {v.get('id')} has missing violation_type; defaulting to 'unknown'")
+    
     return violations
+
+@api_router.post("/violations/migrate_missing_type")
+async def migrate_missing_violation_type(session_token: Optional[str] = Cookie(None)):
+    """Admin endpoint: Update all violations with missing violation_type to 'unknown' in database.
+    This is a one-time migration for legacy violations that were created before the field was required."""
+    user = await get_current_user(session_token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        # Find all violations for this user with missing violation_type
+        query = {"user_id": user.id, "$or": [{"violation_type": {"$exists": False}}, {"violation_type": ""}]}
+        result = await db.violations.update_many(query, {"$set": {"violation_type": "unknown"}})
+        logger.info(f"Migrated {result.modified_count} violations for user {user.id}")
+        return {"migrated": result.modified_count}
+    except Exception as e:
+        logger.exception("Migration failed")
+        raise HTTPException(status_code=500, detail=str(e))
 
 class CalibrationRequest(BaseModel):
     name: str
@@ -2075,12 +2121,24 @@ async def process_photo_background(photo_id: str, user_id: str):
         except Exception:
             pass
 
+        # Attempt Cloudinary upload for processed photo
+        processed_path = output_path
+        try:
+            from utils.cloudinary_config import upload_image_to_cloudinary
+            loop = asyncio.get_running_loop()
+            cloud_url = await loop.run_in_executor(None, functools.partial(upload_image_to_cloudinary, output_path))
+            if cloud_url:
+                processed_path = cloud_url
+                logger.info('Uploaded processed photo to Cloudinary: %s', cloud_url)
+        except Exception as e:
+            logger.debug('Cloudinary upload for photo failed or not configured: %s', e)
+
         # Update photo status
         await db.photos.update_one(
             {"id": photo_id},
             {"$set": {
                 "status": "completed",
-                "processed_path": output_path,
+                "processed_path": processed_path,
                 "total_violations": violations_count
             }}
         )
@@ -2294,8 +2352,12 @@ async def download_processed_photo(photo_id: str, type: str = Query("processed")
     else:
         if not photo.get('processed_path'):
             raise HTTPException(status_code=404, detail="Processed photo not found")
-        file_path = Path(photo['processed_path'])
+        processed_path = photo['processed_path']
         disp_name = f"processed_{photo.get('filename', photo_id)}"
+        # If processed_path is a remote URL, redirect the client to it (Cloudinary support)
+        if isinstance(processed_path, str) and processed_path.startswith(('http://', 'https://')):
+            return RedirectResponse(url=processed_path)
+        file_path = Path(processed_path)
 
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Photo file missing on disk")

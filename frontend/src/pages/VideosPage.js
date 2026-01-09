@@ -236,8 +236,15 @@ const VideosPage = () => {
                       {processedVideos.map(video => (
                         <div key={`processed-video-${video.id}`} className="bg-slate-800 dark:bg-slate-800 rounded-lg p-3 flex items-center justify-between hover:bg-slate-750 transition-colors">
                           <div className="flex items-center gap-3">
-                            {/* Use cloud URL or processed_path directly when available for faster CDN streaming */}
-                            <video className="w-40 h-24 rounded object-cover" controls src={video.processed_path || `${API}/videos/${video.id}/download`} />
+                            {/* Use cloud URL or processed_path directly when available for faster CDN streaming (fallback to backend download for local paths) */}
+                            {
+                              (() => {
+                                const raw = video.processed_path;
+                                const isRemote = typeof raw === 'string' && (raw.startsWith('http://') || raw.startsWith('https://'));
+                                const src = isRemote ? raw : `${API}/videos/${video.id}/download`;
+                                return <video className="w-40 h-24 rounded object-cover" controls src={src} />;
+                              })()
+                            }
                             <div>
                               <p className="text-white font-medium text-sm">{video.filename}</p>
                               <div className="text-xs text-slate-400">{video.duration?.toFixed(1)}s • {video.total_violations || 0} violations</div>
@@ -263,9 +270,16 @@ const VideosPage = () => {
                         const v = processedVideos.find(x => x.id === selectedVideoId);
                         return v ? (
                           <div className="mb-2">
-                            <div className="text-xs text-slate-300">Frames for</div>
+                              <div className="text-xs text-slate-300">Frames for</div>
                             <div className="flex items-center gap-2 mt-1">
-                              <video className="w-24 h-12 rounded object-cover" controls src={v.processed_path || `${API}/videos/${v.id}/download`} />
+                              {
+                                (() => {
+                                  const raw = v.processed_path;
+                                  const isRemote = typeof raw === 'string' && (raw.startsWith('http://') || raw.startsWith('https://'));
+                                  const src = isRemote ? raw : `${API}/videos/${v.id}/download`;
+                                  return <video className="w-24 h-12 rounded object-cover" controls src={src} />;
+                                })()
+                              }
                               <div className="text-sm text-white">{v.filename}</div>
                             </div>
                           </div>

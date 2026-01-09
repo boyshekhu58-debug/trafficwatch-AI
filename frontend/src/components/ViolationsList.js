@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Card } from '@/components/ui/card';
-import { AlertTriangle, Gauge, Smartphone, Users } from 'lucide-react';
+import { AlertTriangle, Gauge, Smartphone, Users, Download } from 'lucide-react';
 import DateFilter from './DateFilter';
 import { format } from 'date-fns';
 
@@ -48,18 +48,59 @@ const ViolationsList = ({ violations, videos, photos, selectedDate, onDateChange
     return labels[normalizedType] || (type || 'Unknown').replace('_', ' ');
   };
 
+  const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+  const API = `${BACKEND_URL}/api`;
+
   const getVideoName = (videoId) => {
     const video = videos.find(v => v.id === videoId);
     return video ? video.filename : 'Unknown';
   };
 
   const getVideoById = (videoId) => videos.find(v => v.id === videoId);
+
+  const downloadVideoInstant = async (videoId, filename) => {
+    try {
+      const res = await fetch(`${API}/videos/${videoId}/download`);
+      if (!res.ok) {
+        window.open(`${API}/videos/${videoId}/download`, '_blank');
+        return;
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename || `video_${videoId}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => window.URL.revokeObjectURL(url), 2000);
+    } catch (e) {
+      window.open(`${API}/videos/${videoId}/download`, '_blank');
+    }
+  };
+
   const renderVideoPreview = (violation) => {
-    // Use violation.media_url if present, otherwise fall back to video's processed_path
-    const mediaUrl = violation?.media_url || (violation && getVideoById(violation.video_id)?.processed_path);
-    if (!mediaUrl) return getVideoName(violation.video_id);
+    const videoObj = violation && getVideoById(violation.video_id);
+    const rawMedia = violation?.media_url || videoObj?.processed_path;
+    const isRemote = typeof rawMedia === 'string' && (rawMedia.startsWith('http://') || rawMedia.startsWith('https://'));
+    const src = isRemote ? rawMedia : (violation?.video_id ? `${API}/videos/${violation.video_id}/download` : null);
+
+    if (!src) return getVideoName(violation.video_id);
+
     return (
-      <video className="w-24 h-12 rounded object-cover" controls src={mediaUrl} />
+      <div className="flex items-center gap-2">
+        <video className="w-24 h-12 rounded object-cover" controls src={src} />
+        {violation?.video_id ? (
+          <button
+            className="p-2 bg-slate-100 dark:bg-slate-800 rounded"
+            onClick={() => downloadVideoInstant(violation.video_id, getVideoName(violation.video_id))}
+            title="Download"
+            aria-label="Download video"
+          >
+            <Download className="w-4 h-4 text-slate-700 dark:text-slate-200" />
+          </button>
+        ) : null}
+      </div>
     );
   };
 
@@ -133,7 +174,6 @@ const ViolationsList = ({ violations, videos, photos, selectedDate, onDateChange
                   <tr className="border-b border-slate-200 dark:border-slate-800">
                     <th className="text-left text-slate-500 dark:text-slate-400 text-xs font-medium pb-3 uppercase">Type</th>
                     <th className="text-left text-slate-500 dark:text-slate-400 text-xs font-medium pb-3 uppercase">Video</th>
-                    <th className="text-left text-slate-500 dark:text-slate-400 text-xs font-medium pb-3 uppercase">Plate</th>
                     <th className="text-left text-slate-500 dark:text-slate-400 text-xs font-medium pb-3 uppercase">Track ID</th>
                     <th className="text-left text-slate-500 dark:text-slate-400 text-xs font-medium pb-3 uppercase">Time</th>
                     <th className="text-left text-slate-500 dark:text-slate-400 text-xs font-medium pb-3 uppercase">Speed</th>
@@ -141,8 +181,8 @@ const ViolationsList = ({ violations, videos, photos, selectedDate, onDateChange
                   </tr>
                 </thead>
                 <tbody>
-                  {videoViolations.map((violation) => (
-                    <tr key={violation.id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                  {videoViolations.map((violation, idx) => (
+                    <tr key={violation.id || idx} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                       <td className="py-3">
                         <div className="flex items-center gap-2">
                           {getViolationIcon(violation.violation_type)}
@@ -150,11 +190,25 @@ const ViolationsList = ({ violations, videos, photos, selectedDate, onDateChange
                         </div>
                       </td>
                       <td className="py-3 text-slate-700 dark:text-slate-200 text-sm">{renderVideoPreview(violation)}</td>
-                      <td className="py-3 text-slate-700 dark:text-slate-200 text-sm">{violation.plate_number ? <span className="text-green-500 font-semibold">{violation.plate_number}</span> : <span className="text-slate-400">-</span>}</td>
-                      <td className="py-3 text-slate-700 dark:text-slate-200 text-sm">#{violation.track_id}</td>
-                      <td className="py-3 text-slate-700 dark:text-slate-200 text-sm">{violation.timestamp ? violation.timestamp.toFixed(2) + 's' : '-'}</td>
-                      <td className="py-3 text-slate-700 dark:text-slate-200 text-sm">{violation.speed ? `${violation.speed.toFixed(1)} km/h` : '-'}</td>
-                      <td className="py-3 text-slate-700 dark:text-slate-200 text-sm">{(violation.confidence * 100).toFixed(1)}%</td>
+                      <td className="py-3 text-slate-700 dark:text-slate-200 text-sm">{violation.track_id ? `#${violation.track_id}` : '-'}</td>
+                      <td className="py-3 text-slate-700 dark:text-slate-200 text-sm">{
+                        (() => {
+                          const ts = typeof violation.timestamp === 'number' ? violation.timestamp : parseFloat(violation.timestamp);
+                          return (typeof ts === 'number' && !Number.isNaN(ts)) ? ts.toFixed(2) + 's' : '-';
+                        })()
+                      }</td>
+                      <td className="py-3 text-slate-700 dark:text-slate-200 text-sm">{
+                        (() => {
+                          const sp = typeof violation.speed === 'number' ? violation.speed : parseFloat(violation.speed);
+                          return (typeof sp === 'number' && !Number.isNaN(sp)) ? `${sp.toFixed(1)} km/h` : '-';
+                        })()
+                      }</td>
+                      <td className="py-3 text-slate-700 dark:text-slate-200 text-sm">{
+                        (() => {
+                          const conf = typeof violation.confidence === 'number' ? violation.confidence : parseFloat(violation.confidence);
+                          return (typeof conf === 'number' && !Number.isNaN(conf)) ? (conf * 100).toFixed(1) + '%' : '-';
+                        })()
+                      }</td>
                     </tr>
                   ))}
                 </tbody>
@@ -177,7 +231,6 @@ const ViolationsList = ({ violations, videos, photos, selectedDate, onDateChange
                   <tr className="border-b border-slate-200 dark:border-slate-800">
                     <th className="text-left text-slate-500 dark:text-slate-400 text-xs font-medium pb-3 uppercase">Type</th>
                     <th className="text-left text-slate-500 dark:text-slate-400 text-xs font-medium pb-3 uppercase">Photo</th>
-                    <th className="text-left text-slate-500 dark:text-slate-400 text-xs font-medium pb-3 uppercase">Plate</th>
                     <th className="text-left text-slate-500 dark:text-slate-400 text-xs font-medium pb-3 uppercase">Track ID</th>
                     <th className="text-left text-slate-500 dark:text-slate-400 text-xs font-medium pb-3 uppercase">Time</th>
                     <th className="text-left text-slate-500 dark:text-slate-400 text-xs font-medium pb-3 uppercase">Speed</th>
@@ -185,8 +238,8 @@ const ViolationsList = ({ violations, videos, photos, selectedDate, onDateChange
                   </tr>
                 </thead>
                 <tbody>
-                  {photoViolations.map((violation) => (
-                    <tr key={violation.id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                  {photoViolations.map((violation, idx) => (
+                    <tr key={violation.id || idx} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                       <td className="py-3">
                         <div className="flex items-center gap-2">
                           {getViolationIcon(violation.violation_type)}
@@ -194,11 +247,25 @@ const ViolationsList = ({ violations, videos, photos, selectedDate, onDateChange
                         </div>
                       </td>
                       <td className="py-3 text-slate-700 dark:text-slate-200 text-sm">{getPhotoName(violation.photo_id)}</td>
-                      <td className="py-3 text-slate-700 dark:text-slate-200 text-sm">{violation.plate_number ? <span className="text-green-500 font-semibold">{violation.plate_number}</span> : <span className="text-slate-400">-</span>}</td>
-                      <td className="py-3 text-slate-700 dark:text-slate-200 text-sm">#{violation.track_id}</td>
-                      <td className="py-3 text-slate-700 dark:text-slate-200 text-sm">{violation.timestamp ? violation.timestamp.toFixed(2) + 's' : '-'}</td>
-                      <td className="py-3 text-slate-700 dark:text-slate-200 text-sm">{violation.speed ? `${violation.speed.toFixed(1)} km/h` : '-'}</td>
-                      <td className="py-3 text-slate-700 dark:text-slate-200 text-sm">{(violation.confidence * 100).toFixed(1)}%</td>
+                      <td className="py-3 text-slate-700 dark:text-slate-200 text-sm">{violation.track_id ? `#${violation.track_id}` : '-'}</td>
+                      <td className="py-3 text-slate-700 dark:text-slate-200 text-sm">{
+                        (() => {
+                          const ts = typeof violation.timestamp === 'number' ? violation.timestamp : parseFloat(violation.timestamp);
+                          return (typeof ts === 'number' && !Number.isNaN(ts)) ? ts.toFixed(2) + 's' : '-';
+                        })()
+                      }</td>
+                      <td className="py-3 text-slate-700 dark:text-slate-200 text-sm">{
+                        (() => {
+                          const sp = typeof violation.speed === 'number' ? violation.speed : parseFloat(violation.speed);
+                          return (typeof sp === 'number' && !Number.isNaN(sp)) ? `${sp.toFixed(1)} km/h` : '-';
+                        })()
+                      }</td>
+                      <td className="py-3 text-slate-700 dark:text-slate-200 text-sm">{
+                        (() => {
+                          const conf = typeof violation.confidence === 'number' ? violation.confidence : parseFloat(violation.confidence);
+                          return (typeof conf === 'number' && !Number.isNaN(conf)) ? (conf * 100).toFixed(1) + '%' : '-';
+                        })()
+                      }</td>
                     </tr>
                   ))}
                 </tbody>

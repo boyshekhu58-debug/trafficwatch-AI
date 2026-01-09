@@ -124,6 +124,7 @@ def process_job(video_doc):
                     'media_url': processed_path,
                     'violations': int(result.get('violations_count', 0)),
                     'violation_types': result.get('violation_types', {}),
+                    'is_summary': True,
                     'created_at': datetime.utcnow()
                 }
                 db.violations.insert_one(violation_doc)
