@@ -56,6 +56,9 @@ const Dashboard = ({ user, setUser }) => {
   const [lastLoadTime, setLastLoadTime] = useState(0);
   const videoPollingIntervals = useRef({});
   const photoPollingIntervals = useRef({});
+  const abortControllerRef = useRef(null);
+  const videoAbortControllers = useRef({});
+  const photoAbortControllers = useRef({});
   const { theme, toggleTheme } = useTheme();
 
   // Cache data for 30 seconds to avoid unnecessary reloads
@@ -70,11 +73,25 @@ const Dashboard = ({ user, setUser }) => {
       loadData(true, selectedDate); // force refresh to get latest data
     }, 5000);
     
-    // Cleanup polling intervals on unmount
+      // Cleanup polling intervals and abort in-flight requests on unmount
     return () => {
       clearInterval(autoRefreshInterval);
       Object.values(videoPollingIntervals.current).forEach(interval => clearInterval(interval));
       Object.values(photoPollingIntervals.current).forEach(interval => clearInterval(interval));
+      if (abortControllerRef.current) {
+        try { abortControllerRef.current.abort(); } catch (e) { /* ignore */ }
+        abortControllerRef.current = null;
+      }
+      // Abort any outstanding per-video controllers
+      Object.values(videoAbortControllers.current).forEach(ctrl => {
+        try { ctrl.abort(); } catch (e) { /* ignore */ }
+      });
+      videoAbortControllers.current = {};
+      // Abort any outstanding per-photo controllers
+      Object.values(photoAbortControllers.current).forEach(ctrl => {
+        try { ctrl.abort(); } catch (e) { /* ignore */ }
+      });
+      photoAbortControllers.current = {};
     };
   }, [selectedDate]);
 
@@ -93,11 +110,22 @@ const Dashboard = ({ user, setUser }) => {
   }, [activeTab, selectedDate]);
 
   const loadData = async (force = false, date = null) => {
+    // Prevent overlapping loads — if a load is already in progress, skip this invocation.
+    if (loading) return;
+
     const now = Date.now();
     // Skip if data is fresh and not forcing
     if (!force && dataLoaded && (now - lastLoadTime) < CACHE_DURATION) {
       return;
     }
+
+    // Abort any previous in-flight loadData requests for robust control
+    if (abortControllerRef.current) {
+      try { abortControllerRef.current.abort(); } catch (e) { /* ignore */ }
+      abortControllerRef.current = null;
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     try {
       setLoading(true);
@@ -106,10 +134,12 @@ const Dashboard = ({ user, setUser }) => {
         try {
           const statsRes = await axios.get(`${API}/stats`, { 
             withCredentials: true,
-            timeout: 5000 // 5 second timeout for stats
+            timeout: 5000, // 5 second timeout for stats
+            signal: controller.signal
           });
           setStats(statsRes.data);
         } catch (error) {
+          if (error?.code === 'ERR_CANCELED') return; // request was aborted
           console.error('Error loading stats:', error);
           // Update stats with current data counts
           setStats(prev => ({
@@ -126,9 +156,9 @@ const Dashboard = ({ user, setUser }) => {
 
       // Load main data first (videos, photos, violations) - these are critical
       const [videosRes, photosRes, violationsRes] = await Promise.all([
-        axios.get(`${API}/videos`, { withCredentials: true, timeout: 10000, params }),
-        axios.get(`${API}/photos`, { withCredentials: true, timeout: 10000, params }),
-        axios.get(`${API}/violations`, { withCredentials: true, timeout: 10000, params })
+        axios.get(`${API}/videos`, { withCredentials: true, timeout: 10000, params, signal: controller.signal }),
+        axios.get(`${API}/photos`, { withCredentials: true, timeout: 10000, params, signal: controller.signal }),
+        axios.get(`${API}/violations`, { withCredentials: true, timeout: 10000, params, signal: controller.signal })
       ]);
       
       setVideos(videosRes.data || []);
@@ -138,11 +168,17 @@ const Dashboard = ({ user, setUser }) => {
       setLastLoadTime(now);
       setLoading(false);
 
+      // Clear controller after successful completion
+      abortControllerRef.current = null;
+
       // Load stats in background (non-blocking)
       loadStats();
     } catch (error) {
+      // If the request was cancelled, ignore and do not change loading state
+      if (error?.code === 'ERR_CANCELED') return;
       console.error('Error loading data:', error);
       setLoading(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -177,10 +213,23 @@ const Dashboard = ({ user, setUser }) => {
       const videoId = video.id;
       videoPollingIntervals.current[videoId] = setInterval(async () => {
         try {
-          const videoRes = await axios.get(`${API}/videos/${videoId}`, { withCredentials: true, timeout: 3000 });
+          // Abort previous controller for this videoId if present
+          if (videoAbortControllers.current[videoId]) {
+            try { videoAbortControllers.current[videoId].abort(); } catch (e) { /* ignore */ }
+            videoAbortControllers.current[videoId] = null;
+          }
+          const vctrl = new AbortController();
+          videoAbortControllers.current[videoId] = vctrl;
+
+          const videoRes = await axios.get(`${API}/videos/${videoId}`, { withCredentials: true, timeout: 3000, signal: vctrl.signal });
           if (videoRes.data.status === 'completed' || videoRes.data.status === 'failed') {
             clearInterval(videoPollingIntervals.current[videoId]);
             delete videoPollingIntervals.current[videoId];
+            // Abort and remove controller for this id
+            if (videoAbortControllers.current[videoId]) {
+              try { videoAbortControllers.current[videoId].abort(); } catch (e) { /* ignore */ }
+              delete videoAbortControllers.current[videoId];
+            }
 
             if (videoRes.data.status === 'completed') {
               const violationCount = videoRes.data.total_violations || 0;
@@ -198,8 +247,14 @@ const Dashboard = ({ user, setUser }) => {
             loadData(true); // Force reload
           }
         } catch (error) {
+          // ignore cancelled errors
+          if (error?.code === 'ERR_CANCELED') return;
           clearInterval(videoPollingIntervals.current[videoId]);
           delete videoPollingIntervals.current[videoId];
+          if (videoAbortControllers.current[videoId]) {
+            try { videoAbortControllers.current[videoId].abort(); } catch (e) { /* ignore */ }
+            delete videoAbortControllers.current[videoId];
+          }
         }
       }, 3000);
     } catch (error) {
@@ -234,14 +289,29 @@ const Dashboard = ({ user, setUser }) => {
       const photoId = response.data.id;
       photoPollingIntervals.current[photoId] = setInterval(async () => {
         try {
+          // Abort previous controller for this photoId if present
+          if (photoAbortControllers.current[photoId]) {
+            try { photoAbortControllers.current[photoId].abort(); } catch (e) { /* ignore */ }
+            photoAbortControllers.current[photoId] = null;
+          }
+          const pctrl = new AbortController();
+          photoAbortControllers.current[photoId] = pctrl;
+
           const photoRes = await axios.get(`${API}/photos/${photoId}`, { 
             withCredentials: true,
-            timeout: 2000
+            timeout: 2000,
+            signal: pctrl.signal
           });
           if (photoRes.data.status === 'completed' || photoRes.data.status === 'failed') {
             clearInterval(photoPollingIntervals.current[photoId]);
             delete photoPollingIntervals.current[photoId];
             
+            // Abort and remove controller for this id
+            if (photoAbortControllers.current[photoId]) {
+              try { photoAbortControllers.current[photoId].abort(); } catch (e) { /* ignore */ }
+              delete photoAbortControllers.current[photoId];
+            }
+
             if (photoRes.data.status === 'completed') {
               const violationCount = photoRes.data.total_violations || 0;
               toast.success(`Photo processing complete! Found ${violationCount} violation(s).`);
@@ -260,8 +330,13 @@ const Dashboard = ({ user, setUser }) => {
             loadData(true); // Force reload
           }
         } catch (error) {
+          if (error?.code === 'ERR_CANCELED') return;
           clearInterval(photoPollingIntervals.current[photoId]);
           delete photoPollingIntervals.current[photoId];
+          if (photoAbortControllers.current[photoId]) {
+            try { photoAbortControllers.current[photoId].abort(); } catch (e) { /* ignore */ }
+            delete photoAbortControllers.current[photoId];
+          }
         }
       }, 1500); // Poll every 1.5 seconds for photos (balanced speed/server load)
       
