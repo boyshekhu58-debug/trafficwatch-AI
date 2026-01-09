@@ -456,9 +456,9 @@ const EChallanList = ({ violations, videos, onChallanGenerated, onDateChange }) 
                     </span>
                   </h4>
                   <div className="grid grid-cols-1 gap-2">
-                    {paginatedViolationsByDate[dateKey].map((violation) => (
+                    {paginatedViolationsByDate[dateKey].map((violation, idx) => (
                       <div
-                        key={violation.id}
+                        key={violation.id || idx}
                         data-testid={`challan-item-${violation.id}`}
                         className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 hover:bg-slate-800 transition-colors"
                       >
@@ -525,8 +525,8 @@ const EChallanList = ({ violations, videos, onChallanGenerated, onDateChange }) 
                               { (challansMap[violation.id].id && detailsOpen[challansMap[violation.id].id]) && (
                                 <div className="mt-2 bg-slate-900 p-3 rounded text-sm">
                                   <div className="font-semibold mb-1">Breakdown</div>
-                                  { (challansMap[violation.id].breakdown || []).map((b) => (
-                                    <div key={b.violation_id} className="flex justify-between">
+                                  { (challansMap[violation.id].breakdown || []).map((b, bi) => (
+                                    <div key={b.violation_id || bi} className="flex justify-between">
                                       <div>{getViolationLabel(b.violation_type)}</div>
                                       <div>₹{parseFloat(b.amount || 0).toFixed(2)}</div>
                                     </div>
