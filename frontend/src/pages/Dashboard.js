@@ -64,12 +64,19 @@ const Dashboard = ({ user, setUser }) => {
   useEffect(() => {
     loadData(null, selectedDate);
     
+    // Auto-refresh data every 5 seconds to show real-time updates (especially during video processing)
+    // This ensures users see violations appear as soon as processing completes, without manual refresh
+    const autoRefreshInterval = setInterval(() => {
+      loadData(true, selectedDate); // force refresh to get latest data
+    }, 5000);
+    
     // Cleanup polling intervals on unmount
     return () => {
+      clearInterval(autoRefreshInterval);
       Object.values(videoPollingIntervals.current).forEach(interval => clearInterval(interval));
       Object.values(photoPollingIntervals.current).forEach(interval => clearInterval(interval));
     };
-  }, []);
+  }, [selectedDate]);
 
   // Reload data when tab changes, but only if cache is stale
   useEffect(() => {
