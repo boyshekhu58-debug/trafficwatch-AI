@@ -2,6 +2,7 @@
 import uvicorn
 from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect, Cookie, Response, Query
 from fastapi.responses import StreamingResponse, FileResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib import colors
 from reportlab.lib.units import inch
@@ -3043,6 +3044,14 @@ async def generate_challan(violation_id: str, session_token: Optional[str] = Coo
 
 # Include the router in the main app
 app.include_router(api_router)
+
+# Serve frontend static files (React build)
+FRONTEND_BUILD_DIR = ROOT_DIR / "frontend" / "build"
+if FRONTEND_BUILD_DIR.exists():
+    app.mount("/", StaticFiles(directory=FRONTEND_BUILD_DIR, html=True), name="static")
+    logger.info(f"Mounted frontend build from {FRONTEND_BUILD_DIR}")
+else:
+    logger.warning(f"Frontend build directory not found at {FRONTEND_BUILD_DIR}. Frontend static files will not be served.")
 
 # Create useful indexes for date-based queries to support calendar views
 @app.on_event("startup")
